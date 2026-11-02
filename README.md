@@ -36,9 +36,14 @@ laserdesign-gui        # start the guided design GUI
 
 ## Documentation
 
-Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build/html`.
-It contains a step-by-step tutorial, a theory page for each module (with the
-equations, references and assumptions) and the full API reference.
+Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build/html`
+(a `.readthedocs.yaml` is included for hosting on Read the Docs). It contains:
+
+- a library tutorial and a GUI guide,
+- four worked example designs,
+- a theory page for each module with equations, references and assumptions,
+- a validation summary and a developer guide,
+- the full API reference.
 
 ## Roadmap
 
@@ -48,10 +53,15 @@ equations, references and assumptions) and the full API reference.
    *Solid-State Laser Engineering*. Each is documented in `docs/examples/`.
 3. Qt (PySide6) GUI that guides the user through building a laser (done;
    `laserdesign-gui`, guide in `docs/gui.md`).
-4. Packaging, full documentation and GUI tutorial.
+4. Packaging, CI, full documentation and GUI tutorial (done).
 
 ## References
 
 Siegman, *Lasers*; Milonni and Eberly, *Laser Physics*; Koechner,
 *Solid-State Laser Engineering*. See `docs/references.md` for the papers
 behind specific models.
+
+## License
+
+[Zero-Clause BSD](LICENSE): use, copy, modify and distribute for any purpose,
+with no conditions.
