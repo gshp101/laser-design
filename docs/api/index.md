@@ -14,4 +14,5 @@ qswitch
 modelocking
 beam_quality
 design
+gui
 ```

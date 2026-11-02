@@ -1,6 +1,6 @@
 # laserdesign
 
-A Python library, with a planned Qt GUI, for designing solid state lasers:
+A Python library and Qt GUI for designing solid state lasers:
 resonator stability and modes, pump absorption, thermal lensing, gain and
 threshold, CW output, Q-switching, mode locking and M² estimates.
 
@@ -29,8 +29,9 @@ print(op.output_power, op.laser_radius, op.m2_estimate)
 ## Install
 
 ```bash
-python -m pip install -e ".[plot,test]"
+python -m pip install -e ".[plot,gui,test]"
 python -m pytest
+laserdesign-gui        # start the guided design GUI
 ```
 
 ## Documentation
@@ -45,7 +46,8 @@ equations, references and assumptions) and the full API reference.
 2. Example designs in `examples/` (done): CW Nd:YVO4, Q-switched Nd:YAG,
    SESAM mode-locked Nd:YVO4, and a side-pumped Nd:YAG rod after Koechner's
    *Solid-State Laser Engineering*. Each is documented in `docs/examples/`.
-3. Qt (PySide6) GUI that guides the user through building a laser.
+3. Qt (PySide6) GUI that guides the user through building a laser (done;
+   `laserdesign-gui`, guide in `docs/gui.md`).
 4. Packaging, full documentation and GUI tutorial.
 
 ## References
