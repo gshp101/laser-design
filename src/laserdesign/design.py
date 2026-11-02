@@ -181,9 +181,9 @@ class EndPumpedLaser:
         threshold of the same cavity, and the effective area as
         ``pi (w_l^2 + w_p^2) / 2``, so that the stored energy matches the
         absorbed pump energy. Energy and peak power are then multiplied by
-        :meth:`overlap_efficiency`, the fraction of the ideal slope efficiency
-        the CW model achieves, so pump light outside the laser mode is not
-        counted. This is an approximate, overlap-consistent extension of the
+        :meth:`overlap_efficiency`, the fraction of the ideal output above
+        threshold that the CW model achieves, so pump light outside the laser
+        mode is not counted. This is an approximate, overlap-consistent extension of the
         plane-wave theory in :mod:`laserdesign.qswitch`.
         """
         op = self.analyze(pump_power)
@@ -216,21 +216,21 @@ class EndPumpedLaser:
         return out
 
     def overlap_efficiency(self, pump_power: float) -> float:
-        """Differential CW slope over the ideal slope at a pump power.
+        """Actual CW output over the ideal output above threshold.
 
-        A value of 1 means every absorbed pump photon above threshold reaches
-        the TEM00 mode (pump much smaller than the mode); it falls as the pump
-        grows larger than the mode.
+        ``P_out / (eta_s,ideal (P - P_th))``. A value of 1 means every absorbed
+        pump photon above threshold reaches the TEM00 mode (pump much smaller
+        than the mode); it falls as the pump grows larger than the mode. Using
+        the average rather than the differential slope makes the Q-switched
+        average power tend to the CW output at high repetition rates.
         """
         op = self.analyze(pump_power)
         if not op.stable:
             raise ValueError("Resonator is unstable at this pump power")
-        dp = 0.02 * pump_power
-        args = (op.laser_radius, op.pump_radius, self.output_coupling, self.passive_loss,
-                self.absorbed_fraction, self.crystal_length, self.doping)
-        p1 = gain.end_pumped_cw(self.material, pump_power - dp, *args).output_power
-        p2 = gain.end_pumped_cw(self.material, pump_power + dp, *args).output_power
-        return float(min(1.0, (p2 - p1) / (2 * dp) / op.slope_efficiency_ideal))
+        ideal = op.slope_efficiency_ideal * (pump_power - op.threshold)
+        if ideal <= 0:
+            return 0.0
+        return float(min(1.0, op.output_power / ideal))
 
     def sesam_mode_locked(self, pump_power: float, absorber_saturation_fluence: float,
                           modulation_depth: float, absorber_mirror: int = 2) -> dict:

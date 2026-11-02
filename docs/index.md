@@ -17,8 +17,10 @@ when laying out a new oscillator:
 - **Beam quality:** second-moment M² of arbitrary fields, M² degradation from
   thermal aberration, multimode estimates and caustic fitting.
 
-A Qt GUI that walks you through building a laser step by step sits on top of
-the library (planned; see the project roadmap).
+Worked {doc}`example designs <examples/index>` cover a CW, a Q-switched and a
+mode-locked laser, and a side-pumped rod laser after Koechner. A Qt GUI that
+walks you through building a laser step by step will sit on top of the library
+(planned; see the project roadmap).
 
 ```{toctree}
 :maxdepth: 2
@@ -27,6 +29,7 @@ the library (planned; see the project roadmap).
 installation
 conventions
 tutorial
+examples/index
 ```
 
 ```{toctree}
