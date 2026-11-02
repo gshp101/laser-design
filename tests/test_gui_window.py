@@ -37,10 +37,17 @@ def test_presets_reach_results(window, app, name):
     window.load_spec(presets.PRESETS[name]())
     rows = walk(window, app)
     assert "CW output power" in rows
-    if "Q-switched" in name:
+    spec = window.spec
+    if spec.mode in ("qswitch", "passive"):
         assert "Pulse energy" in rows
-    if "mode-locked" in name:
+    if spec.mode == "passive":
+        assert float(rows["Bleaching criterion (needs > 1)"]) > 1
+    if spec.mode == "modelock":
         assert "QML margin" in rows
+    if spec.mode == "klm":
+        assert "KLM strength at aperture (t / s)" in rows
+    if spec.cavity_type == "ring":
+        assert rows["Resonator type"].startswith("ring")
 
 
 def test_editing_a_page_updates_spec(window, app):
@@ -108,3 +115,47 @@ def test_save_and_open(window, app, tmp_path):
     window.open_path(path)
     assert window.spec.mode == "qswitch"
     assert window.pages[3].mode() == "qswitch"
+
+
+def test_switch_to_ring_and_side_pumping(window, app):
+    window.load_spec(presets.ring_nd_yvo4())
+    window.go(2)
+    assert not window.pages[2].r1.isEnabled()
+    # SESAM on a named fold mirror of the ring
+    window.go(3)
+    op_page = window.pages[3]
+    op_page.radios["modelock"].click()
+    idx = op_page.sesam_loc.findData("M3")
+    assert idx >= 0 and op_page.sesam_loc.findData("mirror2") < 0
+    op_page.sesam_loc.setCurrentIndex(idx)
+    app.processEvents()
+    window.refresh()
+    assert window.spec.mode == "modelock" and window.spec.sesam_location == "M3"
+    rows = walk(window, app)
+    assert "QML margin" in rows
+
+    # side pumping from the pump page
+    window.go(1)
+    pump_page = window.pages[1]
+    pump_page.geometry.setCurrentIndex(pump_page.geometry.findData("side"))
+    pump_page.power.setValue(300)
+    pump_page.fill.setValue(80)
+    app.processEvents()
+    window.refresh()
+    assert window.spec.pump_geometry == "side" and window.spec.multimode_fill == 0.8
+    assert "Rod thermal lens" in pump_page.plot.axes[0].get_title()
+
+
+def test_passive_mode_from_operation_page(window, app):
+    window.load_spec(presets.cw_nd_yvo4())
+    window.go(3)
+    page = window.pages[3]
+    page.radios["passive"].click()
+    page.t0.setValue(90)
+    app.processEvents()
+    window.refresh()
+    assert window.spec.mode == "passive"
+    assert window.spec.absorber_transmission == pytest.approx(0.9)
+    assert window.spec.absorber_location == "mirror2"
+    rows = walk(window, app)
+    assert "Repetition rate" in rows

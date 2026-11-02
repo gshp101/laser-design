@@ -138,6 +138,10 @@ class KerrLensModel:
     name : str
         Prefix of the slice names; the Kerr lenses are called
         ``"<name> kerr <i>"``.
+    thermal_focal_length : float
+        Optional thermal lens [m] placed at the crystal centre (between the
+        middle slices) and named ``"<name> thermal lens"``, so the model
+        drops into resonators built for :class:`~laserdesign.design.EndPumpedLaser`.
     """
 
     cavity: Callable[[list[Element]], object]
@@ -148,6 +152,7 @@ class KerrLensModel:
     brewster: bool = False
     slices: int = 8
     name: str = "Kerr medium"
+    thermal_focal_length: float = np.inf
 
     @property
     def critical_power(self) -> float:
@@ -179,6 +184,9 @@ class KerrLensModel:
                                         name=f"{self.name} slice {i}{j}")
             ft = 1 / pt[i] if pt[i] != 0 else np.inf
             fs = 1 / ps[i] if ps[i] != 0 else np.inf
+            if i == k // 2:
+                els.append(ThinLens(f=self.thermal_focal_length,
+                                    name=f"{self.name} thermal lens"))
             els += [half("a"), ThinLens(f=ft, f_sagittal=fs, name=self.lens_names[i]), half("b")]
         return els
 

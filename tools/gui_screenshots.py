@@ -23,6 +23,11 @@ SHOTS = [
     ("cw_nd_yvo4", 4, "step5_results_cw.png"),
     ("qswitched_nd_yag", 4, "step5_results_qswitch.png"),
     ("modelocked_nd_yvo4", 4, "step5_results_modelock.png"),
+    ("side_pumped_nd_yag", 1, "step2_pump_side.png"),
+    ("ring_nd_yvo4", 2, "step3_resonator_ring.png"),
+    ("passive_nd_yag_cr_yag", 3, "step4_operation_passive.png"),
+    ("passive_nd_yag_cr_yag", 4, "step5_results_passive.png"),
+    ("klm_ti_sapphire", 4, "step5_results_klm.png"),
 ]
 
 

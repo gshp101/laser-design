@@ -188,7 +188,8 @@ class _LaserModel:
             raise ValueError("Resonator is unstable at this pump power")
         cav = self.resonator(pump_power)
         pump_ratio = pump_power / op.threshold
-        r_i, _ = qswitch.repetitive_q_switch(pump_ratio, rep_rate, self.material.upper_state_lifetime)
+        r_i, _ = qswitch.repetitive_q_switch(pump_ratio, rep_rate,
+                                             self.material.upper_state_lifetime)
         out = {"operating_point": op, "initial_ratio": r_i, "pump_ratio": pump_ratio}
         if r_i <= 1:
             out.update(energy=0.0, peak_power=0.0, pulse_width=float("nan"), average_power=0.0)

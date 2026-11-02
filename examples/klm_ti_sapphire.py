@@ -72,6 +72,7 @@ def run(make_plots: bool = True, outdir: Path = OUT) -> dict:
     soft = np.array([model(s).klm_strength("crystal", "t") for s in seps])
 
     # Operating point: inner edge of the second zone, where the soft aperture is strong
+    zone1 = seps[seps < 103 * mm]
     zone2 = seps[seps > 103 * mm]
     op_sep = float(zone2[0] + 0.5 * mm)
     m = model(op_sep)
@@ -93,7 +94,7 @@ def run(make_plots: bool = True, outdir: Path = OUT) -> dict:
     summary = {
         "fold_angle_deg": float(np.degrees(THETA)),
         "critical_power_MW": p_cr / 1e6,
-        "zone1_mm": f"{seps[seps < 103 * mm].min() / mm:.1f}-{seps[seps < 103 * mm].max() / mm:.1f}",
+        "zone1_mm": f"{zone1.min() / mm:.1f}-{zone1.max() / mm:.1f}",
         "zone2_mm": f"{zone2.min() / mm:.1f}-{zone2.max() / mm:.1f}",
         "operating_separation_mm": op_sep / mm,
         "hard_aperture_strength": m.klm_strength(1, "t"),

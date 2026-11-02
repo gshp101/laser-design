@@ -18,14 +18,18 @@ import math
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QFormLayout,
-                               QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QComboBox,
+                               QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
                                QPushButton, QRadioButton, QSplitter, QStackedWidget,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from .. import gain, pump
+from .. import gain, modelocking, pump, thermal
+from ..abcd import StandingWaveCavity
+from ..design import SidePumpedRodLaser
 from ..materials import MATERIALS, get_material
-from .spec import DesignSpec, build_laser
+from ..passive_qswitch import ABSORBERS
+from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
+                   library_location)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
@@ -97,10 +101,15 @@ class GainMediumPage(Page):
         for key, mat in MATERIALS.items():
             self.material.addItem(mat.name, key)
         self.doping = UnitSpin(0.3, 1.0, "at.%", 0.001, 50, 3, 0.05)
-        self.length = UnitSpin(6e-3, MM, "mm", 0.05, 500, 2, 0.5)
+        self.length = UnitSpin(6e-3, MM, "mm", 0.05, 500, 2, 0.5,
+                               tooltip="Path length in the crystal, or rod length")
+        self.brewster = QCheckBox("Brewster-cut (faces at Brewster's angle)")
+        self.brewster.setToolTip("Models the crystal's astigmatism, e.g. Ti:sapphire in an "
+                                 "X or Z cavity")
         form.addRow("Material", self.material)
         form.addRow("Doping", self.doping)
-        form.addRow("Crystal length", self.length)
+        form.addRow("Crystal / rod length", self.length)
+        form.addRow("", self.brewster)
         lay.addLayout(form)
 
         box = QGroupBox("Material properties (edit to override)")
@@ -122,6 +131,7 @@ class GainMediumPage(Page):
         self.material.currentIndexChanged.connect(self._material_changed)
         self.doping.valueChanged.connect(self._emit)
         self.length.valueChanged.connect(self._emit)
+        self.brewster.toggled.connect(self._emit)
         self._overrides: dict = {}
 
     def _show_material(self, key: str, overrides: dict) -> None:
@@ -146,6 +156,7 @@ class GainMediumPage(Page):
         self.material.setCurrentIndex(max(idx, 0))
         self.doping.set_si(spec.doping)
         self.length.set_si(spec.crystal_length)
+        self.brewster.setChecked(spec.crystal_brewster)
         self._show_material(spec.material, spec.material_overrides)
         self._loading = False
 
@@ -153,6 +164,7 @@ class GainMediumPage(Page):
         spec.material = self.material.currentData()
         spec.doping = self.doping.si()
         spec.crystal_length = self.length.si()
+        spec.crystal_brewster = self.brewster.isChecked()
         base = get_material(spec.material)
         overrides = {}
         for attr, spin in self.props.items():
@@ -183,16 +195,28 @@ class GainMediumPage(Page):
 # ====================================================================== #
 class PumpPage(Page):
     title = "2. Pump"
-    help_text = ("Describe the focused pump beam inside the crystal. Fibre-coupled diodes are "
-                 "best described by their M² (fibre radius × NA × π / λ).")
+    help_text = ("Choose end pumping (a focused beam along the laser axis) or side pumping "
+                 "(a rod pumped uniformly from the side by diodes or lamps). Fibre-coupled "
+                 "diodes are best described by their M² (fibre radius × NA × π / λ).")
 
     def __init__(self, parent=None):
         super().__init__(parent)
         lay = QHBoxLayout(self)
         left = QVBoxLayout()
         self._header(left)
-        form = QFormLayout()
+        top = QFormLayout()
+        self.geometry = QComboBox()
+        self.geometry.addItem("End-pumped (focused beam)", "end")
+        self.geometry.addItem("Side-pumped rod (uniform)", "side")
         self.power = UnitSpin(20, 1.0, "W", 0.01, 1e5, 2, 1)
+        top.addRow("Pump geometry", self.geometry)
+        top.addRow("Pump power", self.power)
+        left.addLayout(top)
+
+        self.geo_stack = QStackedWidget()
+        end_w = QWidget()
+        form = QFormLayout(end_w)
+        form.setContentsMargins(0, 0, 0, 0)
         self.waist = UnitSpin(200e-6, UM, "µm", 1, 1e5, 1, 10)
         self.m2 = UnitSpin(30, 1.0, "", 1, 1e4, 1, 5)
         self.position = UnitSpin(1e-3, MM, "mm", -100, 100, 2, 0.5)
@@ -200,13 +224,36 @@ class PumpPage(Page):
         self.passes.addItems(["Single pass", "Double pass"])
         self.alpha_override = UnitSpin(0, CM ** -1, "/cm", 0, 1e4, 2, 0.5)
         self.alpha_override.setSpecialValueText("from material")
-        form.addRow("Pump power", self.power)
         form.addRow("Waist radius", self.waist)
         form.addRow("Beam quality M²", self.m2)
         form.addRow("Waist depth in crystal", self.position)
         form.addRow("Pumping", self.passes)
         form.addRow("Effective absorption", self.alpha_override)
-        left.addLayout(form)
+        self.geo_stack.addWidget(end_w)
+
+        side_w = QWidget()
+        sf = QFormLayout(side_w)
+        sf.setContentsMargins(0, 0, 0, 0)
+        self.rod_radius = UnitSpin(2e-3, MM, "mm", 0.1, 100, 2, 0.25)
+        self.abs_eff = UnitSpin(0.7, 0.01, "%", 1, 100, 1, 5,
+                                tooltip="Fraction of the pump light absorbed in the rod")
+        self.rod_lens = QComboBox()
+        for key, label in (("average", "Average of radial and tangential"),
+                           ("radial", "Radial polarisation"),
+                           ("tangential", "Tangential polarisation"),
+                           ("dn_dT", "dn/dT only (no stress)")):
+            self.rod_lens.addItem(label, key)
+        self.fill = UnitSpin(0, 0.01, "%", 0, 100, 0, 5,
+                             tooltip="0 = TEM00 (aperture-limited); otherwise the multimode "
+                                     "beam radius as a fraction of the rod radius")
+        self.fill.setSpecialValueText("TEM00")
+        sf.addRow("Rod radius", self.rod_radius)
+        sf.addRow("Absorption efficiency", self.abs_eff)
+        sf.addRow("Thermal lens in resonator", self.rod_lens)
+        sf.addRow("Multimode fill", self.fill)
+        self.geo_stack.addWidget(side_w)
+        left.addWidget(self.geo_stack)
+
         self.info = info_label()
         left.addWidget(self.info)
         left.addStretch(1)
@@ -219,21 +266,35 @@ class PumpPage(Page):
         split.setStretchFactor(1, 1)
         split.setSizes([480, 720])
         lay.addWidget(split)
-        for w in (self.power, self.waist, self.m2, self.position, self.alpha_override):
+        for w in (self.power, self.waist, self.m2, self.position, self.alpha_override,
+                  self.rod_radius, self.abs_eff, self.fill):
             w.valueChanged.connect(self._emit)
-        self.passes.currentIndexChanged.connect(self._emit)
+        for w in (self.passes, self.rod_lens):
+            w.currentIndexChanged.connect(self._emit)
+        self.geometry.currentIndexChanged.connect(self._geometry_changed)
+
+    def _geometry_changed(self, idx: int) -> None:
+        self.geo_stack.setCurrentIndex(idx)
+        self._emit()
 
     def load(self, spec: DesignSpec) -> None:
         self._loading = True
+        self.geometry.setCurrentIndex(self.geometry.findData(spec.pump_geometry))
+        self.geo_stack.setCurrentIndex(self.geometry.currentIndex())
         self.power.set_si(spec.pump_power)
         self.waist.set_si(spec.pump_waist)
         self.m2.set_si(spec.pump_m2)
         self.position.set_si(spec.pump_waist_position)
         self.passes.setCurrentIndex(spec.pump_passes - 1)
         self.alpha_override.set_si(spec.effective_absorption or 0.0)
+        self.rod_radius.set_si(spec.rod_radius)
+        self.abs_eff.set_si(spec.absorption_efficiency)
+        self.rod_lens.setCurrentIndex(self.rod_lens.findData(spec.rod_thermal_lens))
+        self.fill.set_si(spec.multimode_fill or 0.0)
         self._loading = False
 
     def store(self, spec: DesignSpec) -> None:
+        spec.pump_geometry = self.geometry.currentData()
         spec.pump_power = self.power.si()
         spec.pump_waist = self.waist.si()
         spec.pump_m2 = self.m2.si()
@@ -241,12 +302,20 @@ class PumpPage(Page):
         spec.pump_passes = self.passes.currentIndex() + 1
         a = self.alpha_override.si()
         spec.effective_absorption = a if a > 0 else None
+        spec.rod_radius = self.rod_radius.si()
+        spec.absorption_efficiency = self.abs_eff.si()
+        spec.rod_thermal_lens = self.rod_lens.currentData()
+        fill = self.fill.si()
+        spec.multimode_fill = fill if fill > 0 else None
 
     def refresh(self, spec: DesignSpec) -> None:
         try:
             laser = build_laser(spec)
         except ValueError as exc:
             self.info.setText(f"<span style='color:#b00'>{exc}</span>")
+            return
+        if isinstance(laser, SidePumpedRodLaser):
+            self._refresh_side(spec, laser)
             return
         mat = laser.material
         alpha = laser.absorption_coefficient
@@ -276,6 +345,37 @@ class PumpPage(Page):
         a2.set(xlabel="depth [mm]", ylabel="absorbed [W/cm]", title="Absorbed pump density")
         self.plot.draw_idle()
 
+    def _refresh_side(self, spec: DesignSpec, laser: SidePumpedRodLaser) -> None:
+        mat = laser.material
+        p_abs = spec.pump_power * laser.absorbed_fraction
+        p_heat = p_abs * mat.effective_heat_fraction
+        f = laser.thermal_focal_lengths(p_abs)
+        fracture = laser.stress_fracture_pump() / laser.absorbed_fraction
+        d_t = thermal.side_pumped_center_temperature(p_heat, spec.crystal_length,
+                                                     mat.thermal_conductivity)
+        text = (f"Absorbed: <b>{p_abs:.3g} W</b>, heat load {p_heat:.3g} W "
+                f"({p_heat / (spec.crystal_length / CM):.3g} W/cm)<br>"
+                f"Centre-to-surface temperature rise {d_t:.3g} K<br>"
+                f"Thermal focal length: radial <b>{f['radial'] / MM:.0f} mm</b>, tangential "
+                f"<b>{f['tangential'] / MM:.0f} mm</b> (dn/dT only {f['dn_dT'] / MM:.0f} mm)")
+        if np.isfinite(fracture):
+            text += (f"<br>Fracture limit at about {fracture:.3g} W of pump "
+                     f"({spec.pump_power / fracture * 100:.0f} % of it; keep below 25 to 50 %)")
+        self.info.setText(text)
+        powers = np.linspace(0.05, 1.25, 50) * spec.pump_power
+        fl = [laser.thermal_focal_lengths(p * laser.absorbed_fraction) for p in powers]
+        self.plot.clear()
+        a1, a2 = self.plot.axes
+        for key, ls in (("radial", "-"), ("tangential", "--"), ("average", ":")):
+            a1.plot(powers, [x[key] / MM for x in fl], ls, label=key)
+        a1.axvline(spec.pump_power, c="k", lw=0.8, ls=":")
+        a1.set(yscale="log", ylabel="focal length [mm]", title="Rod thermal lens (bifocusing)")
+        a1.legend(fontsize=8)
+        r = np.linspace(0, spec.rod_radius, 100)
+        a2.plot(r / MM, d_t * (1 - (r / spec.rod_radius) ** 2), color="C3")
+        a2.set(xlabel="radius [mm]", ylabel="ΔT [K]", title="Temperature profile at full pump")
+        self.plot.draw_idle()
+
 
 # ====================================================================== #
 # 3. Resonator
@@ -287,10 +387,13 @@ COLS = ["Element", "Name", "Length [mm]", "R or f [mm]", "Angle [°]", "Index n"
 
 class ResonatorPage(Page):
     title = "3. Resonator"
-    help_text = ("List the elements met going from end mirror 1 (usually the pumped face) to "
-                 "end mirror 2. The plots show the TEM00 mode at full pump power and how the "
-                 "stability parameter m = (A+D)/2 moves as the thermal lens changes; the "
-                 "resonator is stable for −1 < m < 1.")
+    help_text = ("For a standing-wave resonator, list the elements met going from end "
+                 "mirror 1 (usually the pumped face) to end mirror 2. For a unidirectional "
+                 "ring, list one full loop, with the curved mirrors as fold mirrors. Name "
+                 "elements you want to refer to later (absorber, SESAM, aperture). The plots "
+                 "show the TEM00 mode at full pump power and how the stability parameter "
+                 "m = (A+D)/2 moves as the thermal lens changes; the resonator is stable "
+                 "for −1 < m < 1.")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -298,8 +401,12 @@ class ResonatorPage(Page):
         left = QVBoxLayout()
         self._header(left)
         form = QFormLayout()
+        self.cavity_type = QComboBox()
+        self.cavity_type.addItem("Standing wave (two end mirrors)", "standing")
+        self.cavity_type.addItem("Ring (unidirectional)", "ring")
         self.r1 = RadiusInput()
         self.r2 = RadiusInput()
+        form.addRow("Resonator type", self.cavity_type)
         form.addRow("End mirror 1 radius", self.r1)
         form.addRow("End mirror 2 radius", self.r2)
         left.addLayout(form)
@@ -348,6 +455,13 @@ class ResonatorPage(Page):
         self.r1.changed.connect(self._emit)
         self.r2.changed.connect(self._emit)
         self.table.itemChanged.connect(self._emit)
+        self.cavity_type.currentIndexChanged.connect(self._type_changed)
+
+    def _type_changed(self, _idx: int = 0) -> None:
+        standing = self.cavity_type.currentData() == "standing"
+        self.r1.setEnabled(standing)
+        self.r2.setEnabled(standing)
+        self._emit()
 
     # -- table helpers ------------------------------------------------- #
     def _set_row(self, row: int, e: dict) -> None:
@@ -460,12 +574,16 @@ class ResonatorPage(Page):
     # -- protocol ------------------------------------------------------ #
     def load(self, spec: DesignSpec) -> None:
         self._loading = True
+        self.cavity_type.setCurrentIndex(self.cavity_type.findData(spec.cavity_type))
         self.r1.set_si(spec.R1)
         self.r2.set_si(spec.R2)
+        self.r1.setEnabled(spec.cavity_type == "standing")
+        self.r2.setEnabled(spec.cavity_type == "standing")
         self._set_elements(spec.elements)
         self._loading = False
 
     def store(self, spec: DesignSpec) -> None:
+        spec.cavity_type = self.cavity_type.currentData()
         spec.R1 = self.r1.si()
         spec.R2 = self.r2.si()
         try:
@@ -494,17 +612,26 @@ class ResonatorPage(Page):
                 prof = cav.mode_profile(plane)
                 a1.plot(prof.z / MM, prof.w / UM, ls,
                         label="tangential" if plane == "t" else "sagittal")
-            a1.axvspan(0, 0, alpha=0)
-            a1.set(xlabel="distance from mirror 1 [mm]", ylabel="w [µm]",
+            standing = isinstance(cav, StandingWaveCavity)
+            a1.set(xlabel="distance from mirror 1 [mm]" if standing
+                   else "position around the ring [mm]", ylabel="w [µm]",
                    title=f"TEM00 mode at {spec.pump_power:.3g} W pump")
             a1.legend(fontsize=8)
-            w_l = cav.spot_size_at("crystal thermal lens")
+            w_l = cav.spot_size_at(CRYSTAL_LENS_NAME)
+            pump_kind = "rod" if isinstance(laser, SidePumpedRodLaser) else "pump"
             text = (f"<b>Stable</b> at {spec.pump_power:.3g} W: m = "
                     f"{cav.stability_parameter('t'):.3f} (t), {cav.stability_parameter('s'):.3f} (s)<br>"
-                    f"Mode radius in crystal {w_l / UM:.0f} µm vs pump {laser.pump_radius / UM:.0f} µm "
-                    f"(ratio {w_l / laser.pump_radius:.2f})<br>"
-                    f"On mirror 1: {cav.spot_size_on_mirror(1) / UM:.0f} µm, mirror 2: "
-                    f"{cav.spot_size_on_mirror(2) / UM:.0f} µm<br>")
+                    f"Mode radius in crystal {w_l / UM:.0f} µm vs {pump_kind} "
+                    f"{laser.pump_radius / UM:.0f} µm (ratio {w_l / laser.pump_radius:.2f})<br>")
+            if standing:
+                text += (f"On mirror 1: {cav.spot_size_on_mirror(1) / UM:.0f} µm, mirror 2: "
+                         f"{cav.spot_size_on_mirror(2) / UM:.0f} µm<br>")
+            else:
+                named = [e.name for e in cav.elements if e.name and "crystal" not in e.name]
+                if named:
+                    text += "Spot sizes: " + ", ".join(
+                        f"{nm} {cav.spot_size_at(nm) / UM:.0f} µm" for nm in named[:6]) + "<br>"
+                text += "Ring: one gain pass per round trip, repetition rate c/L.<br>"
         else:
             a1.text(0.5, 0.5, "Unstable at full pump power", ha="center", va="center",
                     transform=a1.transAxes, color="#b00")
@@ -528,11 +655,56 @@ class ResonatorPage(Page):
 # ====================================================================== #
 # 4. Operation
 # ====================================================================== #
+MODES = (("cw", "Continuous wave"), ("qswitch", "Active Q-switch"),
+         ("passive", "Passive Q-switch"), ("modelock", "SESAM mode-locked"),
+         ("klm", "Kerr-lens mode-locked"))
+MODE_KEYS = tuple(k for k, _ in MODES)
+
+
+class LocationCombo(QComboBox):
+    """Choose an end mirror or a named resonator element."""
+
+    def __init__(self, allow_crystal: bool = False, parent=None):
+        super().__init__(parent)
+        self.allow_crystal = allow_crystal
+        self._value = "mirror2"
+
+    def populate(self, spec: DesignSpec) -> None:
+        self.blockSignals(True)
+        self.clear()
+        if spec.cavity_type == "standing":
+            self.addItem("End mirror 1", "mirror1")
+            self.addItem("End mirror 2", "mirror2")
+        if self.allow_crystal:
+            self.addItem("Gain crystal (soft aperture)", "crystal")
+        for e in spec.elements:
+            if e.get("name"):
+                self.addItem(f"Element: {e['name']}", e["name"])
+        idx = self.findData(self._value)
+        if idx < 0:
+            self.addItem(f"{self._value} (not found)", self._value)
+            idx = self.count() - 1
+        self.setCurrentIndex(idx)
+        self.blockSignals(False)
+
+    def value(self) -> str:
+        return self.currentData() or self._value
+
+    def set_value(self, value: str) -> None:
+        self._value = value
+        idx = self.findData(value)
+        if idx >= 0:
+            self.blockSignals(True)
+            self.setCurrentIndex(idx)
+            self.blockSignals(False)
+
+
 class OperationPage(Page):
     title = "4. Operation"
     help_text = ("Choose the output coupling, the other losses and how the laser is run: "
-                 "continuous wave, actively Q-switched with CW pumping, or SESAM mode-locked "
-                 "(SESAM as end mirror 2).")
+                 "continuous wave, actively Q-switched with CW pumping, passively Q-switched "
+                 "with a saturable absorber, SESAM mode-locked, or Kerr-lens mode-locked. "
+                 "Absorbers, SESAMs and apertures sit at an end mirror or a named element.")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -549,9 +721,7 @@ class OperationPage(Page):
         ml = QHBoxLayout(modes)
         self.group = QButtonGroup(self)
         self.radios = {}
-        for i, (key, label) in enumerate((("cw", "Continuous wave"),
-                                          ("qswitch", "Q-switched"),
-                                          ("modelock", "SESAM mode-locked"))):
+        for i, (key, label) in enumerate(MODES):
             rb = QRadioButton(label)
             self.group.addButton(rb, i)
             self.radios[key] = rb
@@ -565,38 +735,76 @@ class OperationPage(Page):
         self.rep_rate = UnitSpin(20e3, 1e3, "kHz", 0.001, 1e4, 3, 1)
         qf.addRow("Repetition rate", self.rep_rate)
         self.stack.addWidget(qs)
+
+        pw = QWidget()
+        pf = QFormLayout(pw)
+        self.absorber = QComboBox()
+        for key, a in ABSORBERS.items():
+            self.absorber.addItem(a.name, key)
+        self.t0 = UnitSpin(0.85, 0.01, "%", 1, 99.9, 1, 1,
+                           tooltip="Small-signal single-pass transmission T0")
+        self.absorber_loc = LocationCombo()
+        pf.addRow("Saturable absorber", self.absorber)
+        pf.addRow("Initial transmission T0", self.t0)
+        pf.addRow("Absorber location", self.absorber_loc)
+        self.stack.addWidget(pw)
+
         mlw = QWidget()
         mf = QFormLayout(mlw)
         self.fsat = UnitSpin(0.6, 1e-2, "µJ/cm²", 0.1, 1e5, 1, 5)
         self.dr = UnitSpin(0.01, 0.01, "%", 0.01, 50, 2, 0.1)
+        self.sesam_loc = LocationCombo()
         mf.addRow("SESAM saturation fluence", self.fsat)
         mf.addRow("SESAM modulation depth", self.dr)
+        mf.addRow("SESAM location", self.sesam_loc)
         self.stack.addWidget(mlw)
+
+        kw = QWidget()
+        kf = QFormLayout(kw)
+        self.klm_loc = LocationCombo(allow_crystal=True)
+        self.slices = UnitSpin(6, 1.0, "", 2, 40, 0, 2)
+        self.pulse = UnitSpin(20e-15, 1e-15, "fs", 3, 1e5, 1, 5)
+        kf.addRow("Aperture (where the Kerr effect is read)", self.klm_loc)
+        kf.addRow("Crystal slices", self.slices)
+        kf.addRow("Target pulse width", self.pulse)
+        self.stack.addWidget(kw)
         lay.addWidget(self.stack)
         self.info = info_label()
         lay.addWidget(self.info)
         lay.addStretch(1)
 
         self.group.idClicked.connect(self._mode_changed)
-        for w in (self.oc, self.loss, self.rep_rate, self.fsat, self.dr):
+        for w in (self.oc, self.loss, self.rep_rate, self.fsat, self.dr, self.t0, self.slices,
+                  self.pulse):
             w.valueChanged.connect(self._emit)
+        for w in (self.absorber, self.absorber_loc, self.sesam_loc, self.klm_loc):
+            w.currentIndexChanged.connect(self._emit)
 
     def _mode_changed(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
         self._emit()
 
     def mode(self) -> str:
-        return ("cw", "qswitch", "modelock")[max(self.group.checkedId(), 0)]
+        return MODE_KEYS[max(self.group.checkedId(), 0)]
 
     def load(self, spec: DesignSpec) -> None:
         self._loading = True
         self.oc.set_si(spec.output_coupling)
         self.loss.set_si(spec.passive_loss)
         self.radios[spec.mode].setChecked(True)
-        self.stack.setCurrentIndex(("cw", "qswitch", "modelock").index(spec.mode))
+        self.stack.setCurrentIndex(MODE_KEYS.index(spec.mode))
         self.rep_rate.set_si(spec.rep_rate)
         self.fsat.set_si(spec.sesam_saturation_fluence)
         self.dr.set_si(spec.sesam_modulation_depth)
+        self.absorber.setCurrentIndex(max(self.absorber.findData(spec.absorber), 0))
+        self.t0.set_si(spec.absorber_transmission)
+        self.slices.set_si(spec.klm_slices)
+        self.pulse.set_si(spec.klm_pulse_width)
+        for combo, value in ((self.absorber_loc, spec.absorber_location),
+                             (self.sesam_loc, spec.sesam_location),
+                             (self.klm_loc, spec.klm_aperture)):
+            combo.set_value(value)
+            combo.populate(spec)
         self._loading = False
 
     def store(self, spec: DesignSpec) -> None:
@@ -606,8 +814,19 @@ class OperationPage(Page):
         spec.rep_rate = self.rep_rate.si()
         spec.sesam_saturation_fluence = self.fsat.si()
         spec.sesam_modulation_depth = self.dr.si()
+        spec.absorber = self.absorber.currentData()
+        spec.absorber_transmission = self.t0.si()
+        spec.klm_slices = int(round(self.slices.si()))
+        spec.klm_pulse_width = self.pulse.si()
+        for combo in (self.absorber_loc, self.sesam_loc, self.klm_loc):
+            combo.set_value(combo.value())
+        spec.absorber_location = self.absorber_loc.value()
+        spec.sesam_location = self.sesam_loc.value()
+        spec.klm_aperture = self.klm_loc.value()
 
     def refresh(self, spec: DesignSpec) -> None:
+        for combo in (self.absorber_loc, self.sesam_loc, self.klm_loc):
+            combo.populate(spec)
         try:
             laser = build_laser(spec)
         except ValueError as exc:
@@ -619,6 +838,20 @@ class OperationPage(Page):
         op = laser.analyze(spec.pump_power)
         if op.stable:
             text += f"<br>CW threshold {op.threshold:.3g} W, CW output {op.output_power:.3g} W."
+            if op.gain_passes == 1:
+                text += "<br>Ring resonator: one gain pass per round trip."
+        if spec.mode == "passive":
+            a = absorber(spec)
+            l_gs, l_es = a.losses(spec.absorber_transmission, op.gain_passes)
+            text += (f"<br>{a.name}: unbleached round-trip loss {l_gs:.3f}, bleached "
+                     f"{l_es:.3f}; recovery time {a.recovery_time * 1e6:.2g} µs.")
+        if spec.mode == "klm":
+            km = kerr_model(spec)
+            text += (f"<br>Kerr medium: n₂ = {km.n2 * 1e20:.3g}×10⁻²⁰ m²/W, critical power "
+                     f"P<sub>cr</sub> = {km.critical_power / 1e6:.3g} MW.")
+            if km.n2 == 0:
+                text += (" <span style='color:#b00'>This material has no n₂ value; set one "
+                         "to use KLM.</span>")
         self.info.setText(text)
 
 
@@ -692,14 +925,19 @@ class ResultsPage(Page):
             ("Heat load", f"{op.heat_power:.3g} W"),
             ("Thermal focal length", f"{op.thermal_focal_length / MM:.0f} mm"),
             ("Stability parameter m", f"{op.stability_parameter:.3f}"),
+            ("Resonator type", "ring (1 gain pass)" if op.gain_passes == 1
+             else "standing wave (2 gain passes)"),
             ("Laser / pump radius in crystal",
-             f"{op.laser_radius / UM:.0f} / {op.pump_radius / UM:.0f} µm"),
+             f"{op.laser_radius / UM:.0f} / {op.pump_radius / UM:.0f} µm"
+             + (" (multimode flat-top / rod)" if op.laser_profile == "tophat" else "")),
             ("CW threshold", f"{op.threshold:.3g} W"),
             ("CW output power", f"{op.output_power:.3g} W"),
             ("Optical efficiency", f"{op.output_power / p * 100:.1f} %"),
             ("M² estimate", f"{op.m2_estimate:.2f} (aberration {op.m2_aberration:.2f}, "
                             f"multimode {op.m2_multimode:.2f})"),
         ]
+        if op.aperture_loss > 1e-4:
+            rows.append(("Rod clipping loss (round trip)", f"{op.aperture_loss * 100:.2f} %"))
         stable_ops = [o for o in laser.scan(np.linspace(0.05, 1.0, 25) * p) if o.stable]
         for twin in self._twins:
             twin.remove()
@@ -748,9 +986,16 @@ class ResultsPage(Page):
             if qs["initial_ratio"] <= 1:
                 notes = "The inversion does not reach threshold between pulses: no output."
 
+        elif spec.mode == "passive":
+            notes = self._passive(spec, laser, rows, stable_ops, a1, a2)
+
+        elif spec.mode == "klm":
+            notes = self._klm(spec, laser, op, rows, a1, a2)
+
         else:  # modelock
+            loc = library_location(spec.sesam_location)
             res = laser.sesam_mode_locked(p, spec.sesam_saturation_fluence,
-                                          spec.sesam_modulation_depth)
+                                          spec.sesam_modulation_depth, loc)
             c = res["check"]
             rows += [
                 ("Repetition rate", f"{c.repetition_rate / 1e6:.4g} MHz"),
@@ -766,7 +1011,7 @@ class ResultsPage(Page):
             for o in stable_ops:
                 pp.append(o.pump_power)
                 checks.append(laser.sesam_mode_locked(o.pump_power, spec.sesam_saturation_fluence,
-                                                      spec.sesam_modulation_depth)["check"])
+                                                      spec.sesam_modulation_depth, loc)["check"])
             a1.plot(pp, [k.qml_margin for k in checks], label="E_p / E_p,QML")
             a1.plot(pp, [k.absorber_saturation for k in checks], label="E_p / E_sat,A")
             a1.axhline(1, c="k", ls=":", lw=0.8)
@@ -787,6 +1032,125 @@ class ResultsPage(Page):
         self.notes.setText(notes + "<br><i>Results come from idealised models; see the theory "
                            "pages for their assumptions.</i>")
         self.plot.draw_idle()
+
+    # ------------------------------------------------------------------ #
+    def _passive(self, spec, laser, rows, stable_ops, a1, a2) -> str:
+        p = spec.pump_power
+        loc = library_location(spec.absorber_location)
+        ab = absorber(spec)
+        res = laser.passively_q_switched(p, spec.absorber_transmission, ab, loc)
+        pulse = res["pulse"]
+        rows += [
+            ("Absorber", f"{ab.name}, T0 = {spec.absorber_transmission * 100:.1f} %"),
+            ("Absorber spot radius", f"{res['absorber_radius'] / UM:.0f} µm"),
+            ("Bleaching criterion (needs > 1)", f"{pulse.bleaching_criterion:.2f}"),
+            ("Threshold with absorber", f"{res['threshold']:.3g} W"),
+            ("Pulse energy", f"{res['energy'] * 1e3:.3g} mJ"),
+            ("Pulse width (E / P_peak)", f"{res['pulse_width'] * 1e9:.3g} ns"),
+            ("Peak power", f"{res['peak_power'] / 1e3:.3g} kW"),
+            ("Repetition rate", f"{res['rep_rate'] / 1e3:.3g} kHz"),
+            ("Average power", f"{res['average_power']:.3g} W"),
+        ]
+        pp = [o.pump_power for o in stable_ops]
+        vs_p = [laser.passively_q_switched(x, spec.absorber_transmission, ab, loc) for x in pp]
+        a1.plot(pp, [v["rep_rate"] / 1e3 for v in vs_p])
+        a1.set(xlabel="pump power [W]", ylabel="repetition rate [kHz]",
+               title="Pump sets the repetition rate")
+        a3 = a1.twinx()
+        self._twins.append(a3)
+        a3.plot(pp, [v["average_power"] for v in vs_p], "C1--")
+        a3.set_ylabel("average power [W]", color="C1")
+        t0s = np.linspace(max(0.3, spec.absorber_transmission - 0.3),
+                          min(0.98, spec.absorber_transmission + 0.1), 25)
+        vs_t = [laser.passively_q_switched(p, t, ab, loc) for t in t0s]
+        a2.plot(t0s * 100, [v["energy"] * 1e3 for v in vs_t])
+        a2.axvline(spec.absorber_transmission * 100, c="k", ls=":", lw=0.8)
+        a2.set(xlabel="absorber T0 [%]", ylabel="energy [mJ]", title="Energy vs absorber T0")
+        a4 = a2.twinx()
+        self._twins.append(a4)
+        a4.plot(t0s * 100, [v["pulse_width"] * 1e9 for v in vs_t], "C1--")
+        a4.set_ylabel("pulse width [ns]", color="C1")
+        if not pulse.pulse_forms:
+            return ("<span style='color:#b00'>The absorber does not bleach fast enough for a "
+                    "giant pulse (criterion below 1). Focus harder into the absorber or use "
+                    "a lower T0.</span>")
+        if res["rep_rate"] == 0:
+            return ("<span style='color:#b00'>The pump does not reach threshold with the "
+                    "absorber.</span>")
+        if not res["absorber_recovered"]:
+            return ("The pulse period is shorter than three absorber recovery times; the "
+                    "absorber will not recover fully and the pulses will be weaker.")
+        return ""
+
+    def _klm(self, spec, laser, op, rows, a1, a2) -> str:
+        p = spec.pump_power
+        f_th = laser.thermal_focal_length(p)
+        km = kerr_model(spec, f_th)
+        if km.n2 <= 0:
+            a1.set_axis_off()
+            a2.set_axis_off()
+            return ("<span style='color:#b00'>The gain medium has no n₂: KLM cannot be "
+                    "estimated.</span>")
+        loc = library_location(spec.klm_aperture)
+        p_cr = km.critical_power
+        cav = laser.resonator(p)
+        ring = op.gain_passes == 1
+        f_rep = modelocking.repetition_rate(cav.optical_length, ring=ring)
+        e_p = op.circulating_power / f_rep
+        peak = 0.88 * e_p / spec.klm_pulse_width
+        sol0 = km.solve(0.0)
+        w_x = km.spot_size(sol0, "crystal", "t") * (km.n if km.brewster else 1.0)
+        w_y = km.spot_size(sol0, "crystal", "s")
+        spm = modelocking.spm_coefficient(km.n2, km.crystal_length, np.pi * w_x * w_y,
+                                          km.wavelength, passes=op.gain_passes)
+        strengths = {(lo, pl): km.klm_strength(lo, pl)
+                     for lo in (loc, "crystal") for pl in ("t", "s")}
+        rows += [
+            ("Critical power P_cr", f"{p_cr / 1e6:.3g} MW"),
+            ("KLM strength at aperture (t / s)",
+             f"{strengths[(loc, 't')]:.2f} / {strengths[(loc, 's')]:.2f}"),
+            ("KLM strength in crystal (t / s)",
+             f"{strengths[('crystal', 't')]:.2f} / {strengths[('crystal', 's')]:.2f}"),
+            ("Repetition rate", f"{f_rep / 1e6:.4g} MHz"),
+            ("Intracavity pulse energy", f"{e_p * 1e9:.3g} nJ"),
+            ("Peak power / P_cr", f"{peak / p_cr:.2f}"),
+        ]
+        if e_p > 0:
+            gdd = modelocking.soliton_required_gdd(spec.klm_pulse_width, spm, e_p)
+            rows.append(("Soliton net GDD per round trip", f"{gdd / 1e-30:.0f} fs²"))
+            gvd = laser.material.gvd
+            if gvd:
+                mat_gdd = op.gain_passes * gvd * spec.crystal_length
+                rows.append(("Crystal GDD per round trip", f"+{mat_gdd / 1e-30:.0f} fs²"))
+                rows.append(("Compensation needed (prisms, mirrors)",
+                             f"{(gdd - mat_gdd) / 1e-30:.0f} fs²"))
+        p_axis = np.linspace(0, 0.3, 10)
+        a1.plot(p_axis, km.spot_vs_power(p_axis, loc, "t") / km.spot_vs_power([0], loc, "t")[0],
+                label="at aperture")
+        a1.plot(p_axis, km.spot_vs_power(p_axis, "crystal", "t")
+                / km.spot_vs_power([0], "crystal", "t")[0], "--", label="in crystal")
+        a1.set(xlabel="P / P_cr", ylabel="w(P) / w(0)", title="Self-consistent Kerr lens (t)")
+        a1.legend(fontsize=8)
+        pumps = np.linspace(0.2, 1.2, 9) * p
+        hard, soft = [], []
+        for x in pumps:
+            m = kerr_model(spec, laser.thermal_focal_length(x))
+            hard.append(m.klm_strength(loc, "t"))
+            soft.append(m.klm_strength("crystal", "t"))
+        a2.plot(pumps, hard, "o-", ms=3, label="at aperture")
+        a2.plot(pumps, soft, "s--", ms=3, label="in crystal")
+        a2.axhline(0, c="k", lw=0.6)
+        a2.axvline(p, c="k", ls=":", lw=0.8)
+        a2.set(xlabel="pump power [W]", ylabel="δ = (1/w) dw/dp",
+               title="KLM strength vs thermal lens")
+        a2.legend(fontsize=8)
+        d = strengths[(loc, "t")]
+        if not np.isfinite(d):
+            return "<span style='color:#b00'>The Kerr-lensed resonator is unstable.</span>"
+        hint = ("A negative δ at a hard aperture favours pulses (the pulse shrinks there); "
+                "a negative δ in the crystal helps soft-aperture KLM with a small pump. "
+                "|δ| grows near the stability edges.")
+        return hint
 
 
 ALL_PAGES = (GainMediumPage, PumpPage, ResonatorPage, OperationPage, ResultsPage)
