@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,28 @@ version = "0.1.0"
 description = "Physics library for designing diode- and laser-pumped solid state lasers (CW, Q-switched, mode-locked)."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "0BSD"
+license-files = ["LICENSE"]
 authors = [{ name = "Joe" }]
+keywords = ["laser", "solid-state laser", "resonator", "optics", "physics", "Q-switching", "mode locking"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
 dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.urls]
+Homepage = "https://github.com/gshp101/laser-design"
+Documentation = "https://github.com/gshp101/laser-design/tree/main/docs"
+Issues = "https://github.com/gshp101/laser-design/issues"
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.7"]

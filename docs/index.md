@@ -50,5 +50,7 @@ theory/beam_quality
 :caption: Reference
 
 api/index
+validation
+developer
 references
 ```
