@@ -53,7 +53,8 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from .abcd import BrewsterPlate, Element, Medium, StandingWaveCavity, ThinLens
+from . import gaussian
+from .abcd import BrewsterPlate, Element, Medium, StandingWaveCavity, ThinLens, propagate_q
 
 
 def critical_power(wavelength: float, n0: float, n2: float) -> float:
@@ -186,9 +187,18 @@ class KerrLensModel:
         return self.cavity(self.crystal_elements())
 
     def _spots(self, cav) -> tuple[np.ndarray, np.ndarray]:
-        wt = np.array([cav.spot_size_at(nm, "t") for nm in self.lens_names])
-        ws = np.array([cav.spot_size_at(nm, "s") for nm in self.lens_names])
-        return wt, ws
+        """Spot sizes at the input of each Kerr lens, in one pass per plane."""
+        names = set(self.lens_names)
+        out = []
+        for plane in ("t", "s"):
+            q = cav.eigen_q(plane)
+            found = {}
+            for el in cav.elements:
+                if el.name in names and el.name not in found:
+                    found[el.name] = gaussian.spot_size(q, cav.wavelength)
+                q = propagate_q(q, el.matrix(plane))
+            out.append(np.array([found[nm] for nm in self.lens_names]))
+        return out[0], out[1]
 
     def solve(self, power: float, tol: float = 1e-10, max_iter: int = 500,
               damping: float = 0.5) -> KerrSolution:

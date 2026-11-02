@@ -60,6 +60,9 @@ class OperatingPoint:
     ``laser_radius`` is the radius used in the gain model: the TEM00 radius
     ``tem00_radius`` of the resonator, or for a multimode side-pumped rod the
     radius of the top-hat beam (``laser_profile = "tophat"``).
+    ``round_trip_loss`` is the logarithmic loss used, including
+    ``aperture_loss`` (round-trip fractional clipping loss at the rod
+    aperture of a side-pumped laser; zero for end pumping).
     """
 
     pump_power: float
@@ -80,6 +83,8 @@ class OperatingPoint:
     gain_passes: int = 2
     tem00_radius: float = float("nan")
     laser_profile: str = "gaussian"
+    round_trip_loss: float = float("nan")
+    aperture_loss: float = 0.0
 
 
 class _LaserModel:
@@ -109,6 +114,10 @@ class _LaserModel:
         """Laser radius and profile used in the gain model."""
         return tem00_radius, "gaussian"
 
+    def _aperture_loss(self, tem00_radius: float, passes: int) -> float:
+        """Round-trip fractional loss from apertures in the gain medium."""
+        return 0.0
+
     def _profiles(self, op: "OperatingPoint") -> dict:
         return dict(gain_passes=op.gain_passes, laser_profile=op.laser_profile,
                     pump_profile=self.pump_profile)
@@ -131,11 +140,14 @@ class _LaserModel:
                                   nan, nan, nan, nan, nan, nan, passes)
         w00 = cav.spot_size_at(self.crystal_element)
         w_l, profile = self._gain_mode(w00)
+        clip = self._aperture_loss(w00, passes)
+        passive = 1 - (1 - self.passive_loss) * (1 - clip)
+        delta = gain.round_trip_loss(self.output_coupling, passive)
         cw = gain.end_pumped_cw(mat, pump_power, w_l, w_p, self.output_coupling,
-                                self.passive_loss, eta, self.crystal_length, self.doping,
+                                passive, eta, self.crystal_length, self.doping,
                                 gain_passes=passes, laser_profile=profile,
                                 pump_profile=self.pump_profile)
-        slope = gain.slope_efficiency(mat, self.output_coupling, self.delta, eta)
+        slope = gain.slope_efficiency(mat, self.output_coupling, delta, eta)
         m2_ab, m2_mm = self._m2_contributions(w00, w_p, p_h)
         return OperatingPoint(
             pump_power=pump_power, absorbed_power=p_abs, heat_power=p_h,
@@ -144,7 +156,8 @@ class _LaserModel:
             output_power=cw.output_power, circulating_power=cw.circulating_power,
             slope_efficiency_ideal=slope, m2_aberration=m2_ab, m2_multimode=m2_mm,
             m2_estimate=beam_quality.combine_m2(m2_ab, m2_mm), gain_passes=passes,
-            tem00_radius=w00, laser_profile=profile,
+            tem00_radius=w00, laser_profile=profile, round_trip_loss=delta,
+            aperture_loss=clip,
         )
 
     def scan(self, pump_powers) -> list[OperatingPoint]:
@@ -187,7 +200,7 @@ class _LaserModel:
         area = self._gain_area(op)
         pulse = qswitch.q_switch_pulse(
             r_i, area, sigma,
-            self.material.laser_photon_energy, self.delta,
+            self.material.laser_photon_energy, op.round_trip_loss,
             gain.output_coupling_loss(self.output_coupling), cav.round_trip_time,
             gain_passes=op.gain_passes)
         # Apply the transverse overlap efficiency found by the CW model, so
@@ -271,10 +284,10 @@ class _LaserModel:
         sigma = mat.emission_cross_section + mat.laser_absorption_cross_section
         pulse = passive_qswitch.passive_q_switch_pulse(
             absorber, initial_transmission, area, area_s, sigma, mat.laser_photon_energy,
-            self.delta, gain.output_coupling_loss(self.output_coupling),
+            op.round_trip_loss, gain.output_coupling_loss(self.output_coupling),
             cav.round_trip_time, gain_passes=op.gain_passes)
         p_th = gain.threshold_pump_power(
-            mat, op.laser_radius, op.pump_radius, self.delta + pulse.l_gs,
+            mat, op.laser_radius, op.pump_radius, op.round_trip_loss + pulse.l_gs,
             self.absorbed_fraction, self.crystal_length, self.doping, **self._profiles(op))
         overlap = self.overlap_efficiency(pump_power) if pulse.pulse_forms else 0.0
         f_rep = (passive_qswitch.passive_repetition_rate(pump_power / p_th, pulse.final_fraction,
@@ -309,7 +322,7 @@ class _LaserModel:
         check = modelocking.sesam_design_check(
             op.circulating_power, cav.optical_length, self.material.saturation_fluence,
             op.laser_radius, absorber_saturation_fluence, w_a, modulation_depth,
-            self.material.gain_bandwidth, self.delta + modulation_depth,
+            self.material.gain_bandwidth, op.round_trip_loss + modulation_depth,
             ring=isinstance(cav, RingCavity))
         return {"operating_point": op, "absorber_radius": w_a, "check": check}
 
@@ -428,7 +441,10 @@ class SidePumpedRodLaser(_LaserModel):
         Photo-elastic coefficients ``C_r`` and ``C_phi`` (Koechner eq. 7.20;
         defaults are the Nd:YAG [111] values 0.017 and -0.0025).
     multimode_fill : float or None
-        ``None`` assumes TEM00 operation (in practice this needs an aperture).
+        ``None`` assumes TEM00 operation (in practice this needs an aperture);
+        the rod itself then clips the Gaussian mode, which is added to the
+        round-trip loss (see :attr:`OperatingPoint.aperture_loss`), so a mode
+        that grows near a stability edge does not extract unphysically.
         A number ``0 < fill <= 1`` models a multimode beam filling a radius
         ``fill * rod_radius`` with a flat top; its M^2 is then
         ``(fill * rod_radius / w_00)^2``.
@@ -493,6 +509,16 @@ class SidePumpedRodLaser(_LaserModel):
         if self.multimode_fill is None:
             return tem00_radius, "gaussian"
         return self.multimode_fill * self.rod_radius, "tophat"
+
+    def _aperture_loss(self, tem00_radius: float, passes: int) -> float:
+        """Clipping of a TEM00 mode by the rod: ``1 - (1 - exp(-2 a^2 / w^2))^passes``.
+
+        The multimode beam is defined to fit inside the rod, so it has none.
+        """
+        if self.multimode_fill is not None:
+            return 0.0
+        t = 1 - np.exp(-2 * self.rod_radius**2 / tem00_radius**2)
+        return float(1 - t**passes)
 
     def _m2_contributions(self, w00: float, w_p: float, p_h: float) -> tuple[float, float]:
         # A uniformly pumped rod has a parabolic temperature profile: no

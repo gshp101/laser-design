@@ -45,8 +45,44 @@ def test_koechner_example():
     assert s["extraction_r2"] == pytest.approx(0.797, abs=0.002)
 
 
+def test_passive_qswitch_example():
+    s = load("passive_qswitch_nd_yag_cr_yag").run(make_plots=False)
+    assert s["bleaching_criterion"] > 1
+    assert 10 < s["energy_uJ"] < 200
+    assert 1 < s["pulse_width_ns"] < 20
+    assert s["average_power_W"] < s["cw_output_without_absorber_W"]
+    assert s["sim_over_analytic_energy"] == pytest.approx(1, abs=0.02)
+    assert s["sim_over_analytic_peak"] == pytest.approx(1, abs=0.03)
+
+
+def test_klm_example():
+    s = load("klm_ti_sapphire").run(make_plots=False)
+    assert 5 < s["fold_angle_deg"] < 10
+    assert s["hard_aperture_strength"] < 0 and s["soft_aperture_strength"] < 0
+    assert s["repetition_rate_MHz"] == pytest.approx(99, rel=0.03)
+    assert s["soliton_gdd_fs2"] < 0 and s["prism_gdd_needed_fs2"] < s["soliton_gdd_fs2"]
+
+
+def test_side_pumped_example():
+    s = load("side_pumped_nd_yag").run(make_plots=False)
+    assert s["f_radial_mm"] < s["f_average_mm"] < s["f_tangential_mm"]
+    assert s["multimode_output_W"] > 5 * s["tem00_output_W"]
+    assert s["multimode_m2"] > 5
+    assert s["passive_rep_rate_Hz"] > 0 and s["active_1kHz_energy_mJ"] > 0
+
+
+def test_ring_example():
+    s = load("ring_nd_yvo4").run(make_plots=False)
+    assert s["ring_threshold_W"] == pytest.approx(2 * s["linear_same_loss_threshold_W"],
+                                                  rel=0.02)
+    assert abs(s["ring_mode_um"] - s["ring_mode_at_2W_um"]) < 5
+    assert s["ml_repetition_rate_MHz"] == pytest.approx(s["ring_fsr_MHz"])
+
+
 @pytest.mark.parametrize("name", ["cw_nd_yvo4", "qswitched_nd_yag",
-                                  "modelocked_nd_yvo4_sesam", "koechner_side_pumped_rod"])
+                                  "modelocked_nd_yvo4_sesam", "koechner_side_pumped_rod",
+                                  "passive_qswitch_nd_yag_cr_yag", "klm_ti_sapphire",
+                                  "side_pumped_nd_yag", "ring_nd_yvo4"])
 def test_examples_make_plots(name, tmp_path):
     pytest.importorskip("matplotlib")
     load(name).run(make_plots=True, outdir=tmp_path)
