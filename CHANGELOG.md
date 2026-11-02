@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-02
+
+### Added
+
+- Passive Q-switching (`laserdesign.passive_qswitch`): saturable absorber
+  data (Cr⁴⁺:YAG), Degnan's analytic theory with the bleaching criterion,
+  repetition rate with CW pumping, and a three-equation rate simulator.
+  `EndPumpedLaser.passively_q_switched`.
+- Kerr-lens mode locking (`laserdesign.kerr`): Kerr lens of a Gaussian beam,
+  critical power, a self-consistent sliced-crystal resonator model
+  (`KerrLensModel`) for normal and Brewster-cut crystals, KLM strength at hard
+  and soft apertures. `abcd.astigmatism_compensation_angle` and
+  `abcd.brewster_astigmatism`.
+- Side-pumped rods: `SidePumpedRodLaser` with a uniform pump, bifocal thermal
+  lens, rod clipping loss, multimode (flat-top) operation with an M²
+  estimate, and the fracture limit.
+- Ring lasers: every gain, Q-switch and mode-locking calculation takes the
+  number of gain passes per round trip; `EndPumpedLaser` and
+  `SidePumpedRodLaser` detect a `RingCavity`. Absorbers and SESAMs can be
+  located by element name.
+- `gain.mode_overlap`, `gain.effective_mode_area` and top-hat pump and laser
+  profiles in the CW model.
+- Examples: passively Q-switched Nd:YAG/Cr:YAG, KLM Ti:sapphire X-cavity,
+  400 W side-pumped Nd:YAG rod, unidirectional bow-tie ring Nd:YVO4.
+- GUI: side-pumped rods, ring resonators, Brewster-cut crystals, passive
+  Q-switch and KLM operating modes, choosable SESAM/absorber/aperture
+  location, and four new presets.
+- Documentation: theory pages for passive Q-switching, Kerr-lens mode
+  locking, side pumping and ring lasers; four example pages; tutorial
+  sections 10 to 13; GUI guide sections.
+
+### Changed
+
+- `OperatingPoint` gained `gain_passes`, `tem00_radius`, `laser_profile`,
+  `round_trip_loss` and `aperture_loss`; the Q-switch and SESAM methods use the
+  operating point's loss.
+- `sesam_mode_locked(absorber_mirror=...)` also accepts an element name.
+
 ## [0.1.0] - 2026-11-02
 
 First release.
