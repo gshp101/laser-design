@@ -224,6 +224,32 @@ class BrewsterPlate(Element):
         return np.array([[1.0, fraction * self._reduced(plane)], [0.0, 1.0]])
 
 
+def brewster_astigmatism(thickness: float, n: float) -> float:
+    """Difference of sagittal and tangential reduced lengths of a Brewster plate [m].
+
+    ``N t`` with ``N = sqrt(n^2+1) (n^2-1) / n^4`` (Kogelnik et al. 1972).
+    """
+    return float(thickness * np.sqrt(n**2 + 1) * (n**2 - 1) / n**4)
+
+
+def astigmatism_compensation_angle(R: float, thickness: float, n: float,
+                                   mirrors: int = 2) -> float:
+    """Fold angle of incidence that cancels a Brewster plate's astigmatism [rad].
+
+    Each folding mirror of radius ``R`` at incidence ``theta`` contributes
+    ``(R / 2) sin(theta) tan(theta)`` of focal-length difference, so
+    compensation needs ``mirrors (R / 2) sin(theta) tan(theta) = N t``
+    (Kogelnik et al., IEEE JQE 8, 373 (1972), where ``mirrors = 1`` gives
+    their ``R sin(theta) tan(theta) = 2 N t``). Use ``mirrors = 2`` for the
+    usual X or Z cavity with the crystal between two equal folding mirrors.
+    """
+    from scipy import optimize
+
+    target = 2 * brewster_astigmatism(thickness, n) / (mirrors * R)
+    return float(optimize.brentq(lambda th: np.sin(th) * np.tan(th) - target,
+                                 0.0, np.pi / 2 - 1e-9))
+
+
 def crystal_with_thermal_lens(length: float, n: float, f_thermal: float,
                               name: str = "crystal",
                               f_thermal_sagittal: float | None = None) -> list[Element]:

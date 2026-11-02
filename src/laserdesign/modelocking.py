@@ -200,19 +200,24 @@ def sesam_design_check(average_intracavity_power: float, optical_length: float,
                        laser_saturation_fluence: float, laser_mode_radius: float,
                        absorber_saturation_fluence: float, absorber_mode_radius: float,
                        modulation_depth: float, gain_bandwidth: float,
-                       round_trip_loss: float) -> SesamCheck:
-    """Evaluate a SESAM mode-locked standing-wave design in one call.
+                       round_trip_loss: float, ring: bool = False) -> SesamCheck:
+    """Evaluate a SESAM mode-locked design in one call.
 
     Returns repetition rate, intracavity pulse energy, QML threshold and margin
     (pulse energy / threshold), absorber saturation parameter
     ``E_p / E_sat,A`` (aim for 3 to 5) and the pulse width estimates.
+
+    ``optical_length`` is the one-way optical length of a standing-wave
+    cavity, or the full loop for a ring (``ring=True``). In a ring the pulse
+    passes the gain once per round trip, so the QML threshold uses
+    ``gain_passes=1``; the SESAM is hit once per round trip in both cases.
     """
-    f_rep = repetition_rate(optical_length)
+    f_rep = repetition_rate(optical_length, ring=ring)
     e_p = average_intracavity_power / f_rep
     a_l = np.pi * laser_mode_radius**2
     a_a = np.pi * absorber_mode_radius**2
     e_c = qml_threshold_energy(laser_saturation_fluence, a_l, absorber_saturation_fluence,
-                               a_a, modulation_depth)
+                               a_a, modulation_depth, gain_passes=1 if ring else 2)
     return SesamCheck(
         repetition_rate=f_rep,
         pulse_energy=e_p,

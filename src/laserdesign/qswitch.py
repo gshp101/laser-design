@@ -27,7 +27,11 @@ Here ``A`` is the effective mode area in the gain medium, ``delta`` the total
 and ``delta_oc`` the output-coupling logarithmic round-trip loss, ``t_rt`` the
 cavity round-trip time and ``gamma`` the inversion reduction factor (1 for a
 four-level laser, ``1 + sigma_a/sigma_e`` style values up to 2 for
-quasi-three-level media).
+quasi-three-level media). The factor 2 is the number of gain passes per
+round trip in a standing-wave resonator; every function takes
+``gain_passes=1`` for a unidirectional ring, which doubles the energy for the
+same inversion ratio because the same round-trip gain needs twice the
+stored inversion.
 
 Repetitive Q-switching with CW pumping
 --------------------------------------
@@ -106,7 +110,8 @@ class QSwitchPulse:
 
 def q_switch_pulse(initial_ratio: float, mode_area: float, emission_cross_section: float,
                    photon_energy: float, delta: float, delta_oc: float,
-                   round_trip_time: float, gamma: float = 1.0) -> QSwitchPulse:
+                   round_trip_time: float, gamma: float = 1.0,
+                   gain_passes: int = 2) -> QSwitchPulse:
     """Analytic energy, peak power and width of a Q-switched pulse.
 
     Parameters
@@ -126,11 +131,13 @@ def q_switch_pulse(initial_ratio: float, mode_area: float, emission_cross_sectio
         Cavity round-trip time [s].
     gamma : float
         Inversion reduction factor.
+    gain_passes : int
+        2 for a standing-wave, 1 for a ring resonator.
     """
     r = initial_ratio
     x = final_inversion_fraction(r)
     ln_ratio = -np.log(x)
-    pref = mode_area * photon_energy / (2 * emission_cross_section * gamma)
+    pref = mode_area * photon_energy / (gain_passes * emission_cross_section * gamma)
     energy = pref * delta_oc * ln_ratio
     peak = pref * delta * delta_oc * (r - 1 - np.log(r)) / round_trip_time
     return QSwitchPulse(float(energy), float(peak), float(energy / peak), 1 - x, r)
@@ -198,7 +205,8 @@ class QSwitchSimulation:
 def simulate_q_switch(initial_ratio: float, mode_area: float, emission_cross_section: float,
                       photon_energy: float, delta: float, delta_oc: float,
                       round_trip_time: float, gamma: float = 1.0,
-                      initial_photons: float = 1.0, n_points: int = 4000) -> QSwitchSimulation:
+                      initial_photons: float = 1.0, n_points: int = 4000,
+                      gain_passes: int = 2) -> QSwitchSimulation:
     """Integrate the Q-switch rate equations numerically.
 
     The equations, written for the inversion ratio ``n = N / N_th`` and the
@@ -208,7 +216,9 @@ def simulate_q_switch(initial_ratio: float, mode_area: float, emission_cross_sec
     .. math::
 
         \\frac{d \\ln\\Phi}{dt} = \\frac{\\delta (n - 1)}{t_{rt}}, \\qquad
-        \\frac{dn}{dt} = -\\frac{2\\gamma\\sigma}{A t_{rt}} n \\Phi.
+        \\frac{dn}{dt} = -\\frac{p\\gamma\\sigma}{A t_{rt}} n \\Phi,
+
+    with ``p = gain_passes``.
 
     Pumping and spontaneous decay during the pulse are neglected, as in the
     analytic theory, so this is mostly useful for pulse shape and build-up
@@ -218,7 +228,7 @@ def simulate_q_switch(initial_ratio: float, mode_area: float, emission_cross_sec
     r = initial_ratio
     if r <= 1:
         raise ValueError("initial_ratio must exceed 1")
-    k = 2 * gamma * emission_cross_section / (mode_area * round_trip_time)
+    k = gain_passes * gamma * emission_cross_section / (mode_area * round_trip_time)
 
     def rhs(_t, y):
         ln_phi, n = y
