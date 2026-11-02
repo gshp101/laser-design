@@ -18,9 +18,9 @@ when laying out a new oscillator:
   thermal aberration, multimode estimates and caustic fitting.
 
 Worked {doc}`example designs <examples/index>` cover a CW, a Q-switched and a
-mode-locked laser, and a side-pumped rod laser after Koechner. A Qt GUI that
-walks you through building a laser step by step will sit on top of the library
-(planned; see the project roadmap).
+mode-locked laser, and a side-pumped rod laser after Koechner. The Qt
+{doc}`GUI <gui>` walks you through building a laser step by step on top of the
+same models.
 
 ```{toctree}
 :maxdepth: 2
@@ -29,6 +29,7 @@ walks you through building a laser step by step will sit on top of the library
 installation
 conventions
 tutorial
+gui
 examples/index
 ```
 
