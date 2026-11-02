@@ -41,9 +41,10 @@ equations, references and assumptions) and the full API reference.
 
 ## Roadmap
 
-1. Physics core library (this release).
-2. Example designs: CW, Q-switched and mode-locked lasers, including cases from
-   Koechner's *Solid-State Laser Engineering*.
+1. Physics core library (done).
+2. Example designs in `examples/` (done): CW Nd:YVO4, Q-switched Nd:YAG,
+   SESAM mode-locked Nd:YVO4, and a side-pumped Nd:YAG rod after Koechner's
+   *Solid-State Laser Engineering*. Each is documented in `docs/examples/`.
 3. Qt (PySide6) GUI that guides the user through building a laser.
 4. Packaging, full documentation and GUI tutorial.
 

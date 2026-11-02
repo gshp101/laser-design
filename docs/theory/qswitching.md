@@ -59,8 +59,8 @@ theory to the end-pumped geometry:
 - the effective area is $\pi(w_l^2 + w_p^2)/2$, which makes the stored
   inversion equal to the absorbed pump rate times the lifetime;
 - energy and peak power are multiplied by the CW model's overlap efficiency
-  (actual slope over ideal slope), so pump light outside the mode is not
-  counted as extractable.
+  (actual CW output over the ideal output above threshold), so pump light
+  outside the mode is not counted as extractable.
 
 This is a design estimate. It does not include the finite switching time of
 the modulator, pre-lasing, or the gradual opening of an acousto-optic switch,
@@ -70,3 +70,10 @@ all of which lengthen pulses in practice.
 
 Passive Q-switching with a saturable absorber (for example Cr:YAG) is planned;
 the Degnan theory for it fits the same framework.
+
+## Consistency with the CW model
+
+At high repetition rates ($f\tau \gg 1$) the Q-switched average power should
+approach the CW output. In the examples it approaches from below and ends
+within about 1 to 5 % of it, the residual coming from the plane-wave energy
+formula. Treat agreement at that level as the accuracy of the estimate.

@@ -37,7 +37,10 @@ equations, integrated over the crystal length, for the circulating power
 
 with :math:`s_0 = (2/\\pi w_l^2) e^{-2r^2/w_l^2}` and :math:`\\bar N_2` the
 length-integrated upper-state density saturated by the standing-wave
-intensity :math:`2 P s_0(r)`. Spatial hole burning and pump bleaching are
+intensity :math:`2 P s_0(r)`. The power extracted from the gain is then
+``delta * P`` and the output coupler receives the share
+``T / (1 - exp(-delta))`` of it, which keeps the energy balance exact for
+lumped losses of any size. Spatial hole burning and pump bleaching are
 neglected. This reproduces the threshold formula above and automatically
 includes the pump-to-mode overlap in the slope efficiency.
 """
@@ -110,14 +113,23 @@ def slope_efficiency(material: GainMedium, output_coupling: float, delta: float,
                      absorbed_fraction: float, overlap: float = 1.0) -> float:
     """Ideal slope efficiency with respect to incident pump power.
 
-    ``eta_s = eta_abs eta_q (lambda_p / lambda_l) (T / delta) eta_ov``.
+    ``eta_s = eta_abs eta_q (lambda_p / lambda_l) eta_out eta_ov`` with the
+    output fraction ``eta_out = T / (1 - exp(-delta))``: the share of the
+    power lost per round trip that leaves through the output coupler.
     ``overlap`` is the mode-overlap factor (1 for a pump much smaller than the
-    laser mode). Using ``T / delta`` (rather than ``-ln(1-T) / delta``) matches
-    the energy bookkeeping of :func:`end_pumped_cw`, which outputs ``T`` times
-    the circulating power; the two agree for low-loss cavities.
+    laser mode). For low-loss cavities ``eta_out`` reduces to ``T / (T + L)``.
     """
     return float(absorbed_fraction * material.quantum_efficiency * material.quantum_defect
-                 * output_coupling / delta * overlap)
+                 * output_fraction(output_coupling, delta) * overlap)
+
+
+def output_fraction(output_coupling: float, delta: float) -> float:
+    """Share of the round-trip loss that leaves through the output coupler.
+
+    ``T / (1 - exp(-delta))``, which is exact for lumped losses whatever their
+    size.
+    """
+    return float(output_coupling / (1 - np.exp(-delta)))
 
 
 @dataclass
@@ -129,7 +141,7 @@ class CWResult:
     output_power : float
         Power transmitted by the output coupler [W].
     circulating_power : float
-        One-way intracavity power [W].
+        Mean one-way intracavity power [W].
     threshold : float
         Incident pump threshold [W].
     above_threshold : bool
@@ -213,7 +225,10 @@ def end_pumped_cw(material: GainMedium, pump_power: float, laser_radius: float,
         if hi > 1e12:  # pragma: no cover
             raise RuntimeError("Could not bracket circulating power")
     p_circ = optimize.brentq(excess, 0.0, hi, xtol=1e-9 * hi, rtol=1e-10)
-    return CWResult(p_circ * output_coupling, p_circ, p_th, True, g0)
+    # The model's extracted power is delta * P (log gain times mean circulating
+    # power); the output coupler takes its share of it.
+    p_out = p_circ * delta * output_fraction(output_coupling, delta)
+    return CWResult(p_out, p_circ, p_th, True, g0)
 
 
 # ---------------------------------------------------------------------- #
