@@ -11,7 +11,10 @@ pump
 thermal
 gain
 qswitch
+passive_qswitch
 modelocking
+kerr
 beam_quality
 design
+gui
 ```

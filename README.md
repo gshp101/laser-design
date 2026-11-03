@@ -1,8 +1,9 @@
 # laserdesign
 
-A Python library, with a planned Qt GUI, for designing solid state lasers:
-resonator stability and modes, pump absorption, thermal lensing, gain and
-threshold, CW output, Q-switching, mode locking and M² estimates.
+A Python library and Qt GUI for designing solid state lasers:
+resonator stability and modes (standing-wave and ring), end and side
+pumping, thermal lensing, gain and threshold, CW output, active and passive
+Q-switching, SESAM and Kerr-lens mode locking, and M² estimates.
 
 ```python
 import numpy as np
@@ -29,26 +30,41 @@ print(op.output_power, op.laser_radius, op.m2_estimate)
 ## Install
 
 ```bash
-python -m pip install -e ".[plot,test]"
+python -m pip install -e ".[plot,gui,test]"
 python -m pytest
+laserdesign-gui        # start the guided design GUI
 ```
 
 ## Documentation
 
-Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build/html`.
-It contains a step-by-step tutorial, a theory page for each module (with the
-equations, references and assumptions) and the full API reference.
+Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build/html`
+(a `.readthedocs.yaml` is included for hosting on Read the Docs). It contains:
+
+- a library tutorial and a GUI guide,
+- eight worked example designs,
+- a theory page for each module with equations, references and assumptions,
+- a validation summary and a developer guide,
+- the full API reference.
 
 ## Roadmap
 
-1. Physics core library (this release).
-2. Example designs: CW, Q-switched and mode-locked lasers, including cases from
-   Koechner's *Solid-State Laser Engineering*.
-3. Qt (PySide6) GUI that guides the user through building a laser.
-4. Packaging, full documentation and GUI tutorial.
+1. Physics core library (done).
+2. Example designs in `examples/` (done): CW Nd:YVO4, Q-switched Nd:YAG,
+   SESAM mode-locked Nd:YVO4, and a side-pumped Nd:YAG rod after Koechner's
+   *Solid-State Laser Engineering*. Each is documented in `docs/examples/`.
+3. Qt (PySide6) GUI that guides the user through building a laser (done;
+   `laserdesign-gui`, guide in `docs/gui.md`).
+4. Packaging, CI, full documentation and GUI tutorial (done).
+5. Passive Q-switching, Kerr-lens mode locking, side-pumped rods and ring
+   lasers in the library, examples and GUI (done).
 
 ## References
 
 Siegman, *Lasers*; Milonni and Eberly, *Laser Physics*; Koechner,
 *Solid-State Laser Engineering*. See `docs/references.md` for the papers
 behind specific models.
+
+## License
+
+[Zero-Clause BSD](LICENSE): use, copy, modify and distribute for any purpose,
+with no conditions.

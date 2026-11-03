@@ -2,7 +2,9 @@
 
 This tutorial walks through a complete design with the library, in the same
 order the GUI wizard will use: gain medium, pump, thermal lens, resonator,
-CW performance, beam quality, then Q-switched and mode-locked operation. Each
+CW performance, beam quality, then Q-switched and mode-locked operation.
+Sections 10 to 13 then show passive Q-switching, ring resonators, side-pumped
+rods and Kerr-lens mode locking. Each
 step uses one module, so it doubles as a tour of the API. All code blocks run
 as written, in order, in one Python session.
 
@@ -213,6 +215,135 @@ With this short cavity the margin is below 1, so the laser would Q-switch mode l
 make the mode on the SESAM smaller, or choose a SESAM with lower modulation
 depth or saturation fluence. The theory behind each check is in
 {doc}`theory/modelocking`.
+
+## 10. Passive Q-switching with Cr:YAG
+
+Put a Cr⁴⁺:YAG absorber next to the output coupler instead of an active
+switch. Nd:YVO4's large emission cross section makes a passive switch harder
+to bleach than in Nd:YAG, so check the bleaching criterion before trusting
+the pulse numbers:
+
+```python
+pq = laser.passively_q_switched(20.0, initial_transmission=0.9, absorber="cr:yag",
+                                absorber_location=2)
+print(f"bleaching criterion {pq['pulse'].bleaching_criterion:.2f} (needs > 1)")
+print(f"absorber spot {pq['absorber_radius'] / um:.0f} um,"
+      f" energy {pq['energy'] * 1e6:.0f} uJ, width {pq['pulse_width'] * 1e9:.1f} ns,"
+      f" rate {pq['rep_rate'] / 1e3:.0f} kHz")
+print("absorber recovers between pulses:", pq["absorber_recovered"])
+```
+
+The criterion compares how fast the absorber bleaches with how fast the gain
+saturates. It passes here because the mode at the output coupler is smaller
+than the effective gain area, which includes the 200 µm pump. Unlike active
+Q-switching, the pulse energy is fixed by T₀ and the cavity; the pump power
+only sets the repetition rate. Here that rate is so high that the period is
+shorter than three Cr:YAG recovery times (`absorber_recovered` is False):
+the absorber cannot recover fully, so a lower T₀ (more stored energy, lower
+rate) is the better choice. The theory is in
+{doc}`theory/passive_qswitching`, and {doc}`examples/passive_qswitch_nd_yag_cr_yag`
+designs a Nd:YAG/Cr:YAG laser.
+
+## 11. A ring resonator
+
+A ring uses the same `EndPumpedLaser`; only the cavity function changes. The
+element list is one full loop, with the curved mirrors at their angle of
+incidence and names for the mirrors you want to refer to:
+
+```python
+fold = np.radians(6)
+
+def ring(f_thermal):
+    return abcd.RingCavity(
+        [abcd.FreeSpace(200 * mm),
+         *abcd.crystal_with_thermal_lens(length, yvo4.refractive_index, f_thermal,
+                                         name="YVO4"),
+         abcd.FreeSpace(200 * mm),
+         abcd.CurvedMirror(R=300 * mm, angle=fold, name="M1"), abcd.FreeSpace(200 * mm),
+         abcd.FlatMirror(angle=fold, name="M2"), abcd.FreeSpace(200 * mm),
+         abcd.FlatMirror(angle=fold, name="M3"), abcd.FreeSpace(200 * mm),
+         abcd.CurvedMirror(R=300 * mm, angle=fold, name="M4")],
+        wavelength=yvo4.laser_wavelength)
+
+ring_laser = EndPumpedLaser(material=yvo4, doping=doping, crystal_length=length,
+                            pump_beam=pump_beam, cavity=ring,
+                            crystal_element="YVO4 thermal lens",
+                            output_coupling=T, passive_loss=L + 0.02)
+op_ring = ring_laser.analyze(20.0)
+print(f"ring: {op_ring.gain_passes} gain pass, threshold {op_ring.threshold:.2f} W,"
+      f" output {op_ring.output_power:.2f} W, FSR {ring(f_th).free_spectral_range / 1e6:.0f} MHz")
+```
+
+Every result (threshold, Q-switching, SESAM checks) now uses one gain pass
+per round trip and a repetition rate of c/L; see
+{doc}`theory/ring_resonators`.
+
+## 12. A side-pumped rod
+
+{class}`laserdesign.design.SidePumpedRodLaser` replaces the pump beam by a
+uniformly pumped rod. Its thermal lens includes stress bifocusing, and a
+multimode beam can be modelled as filling part of the rod:
+
+```python
+from laserdesign import SidePumpedRodLaser
+
+yag = get_material("Nd:YAG")
+
+def rod_cavity(f_thermal):
+    return abcd.StandingWaveCavity(
+        [abcd.FreeSpace(300 * mm),
+         *abcd.crystal_with_thermal_lens(65 * mm, yag.refractive_index, f_thermal,
+                                         name="rod"),
+         abcd.FreeSpace(300 * mm)],
+        R1=np.inf, R2=np.inf, wavelength=yag.laser_wavelength)
+
+rod = SidePumpedRodLaser(material=yag, doping=1.0, rod_radius=2 * mm, rod_length=65 * mm,
+                         cavity=rod_cavity, crystal_element="rod thermal lens",
+                         output_coupling=0.2, passive_loss=0.04,
+                         absorption_efficiency=0.7, multimode_fill=0.8)
+op_rod = rod.analyze(400.0)
+f_rod = rod.thermal_focal_lengths(400.0 * 0.7)
+print(f"rod lens radial {f_rod['radial'] / mm:.0f} mm, tangential {f_rod['tangential'] / mm:.0f} mm")
+print(f"multimode output {op_rod.output_power:.0f} W, M^2 ~ {op_rod.m2_estimate:.0f}")
+```
+
+See {doc}`theory/side_pumping` and {doc}`examples/side_pumped_nd_yag`.
+
+## 13. Kerr-lens mode locking
+
+{class}`laserdesign.kerr.KerrLensModel` slices a Kerr medium into thin
+nonlinear lenses and solves the resonator self-consistently. You give it the
+resonator as a function of the crystal's element list. For a Ti:sapphire
+X-cavity with a Brewster-cut crystal, first find the fold angle that cancels
+the crystal's astigmatism:
+
+```python
+from laserdesign import kerr
+
+tis = get_material("Ti:sapphire")
+n_tis = tis.refractive_index
+path = 4 * mm
+theta = abcd.astigmatism_compensation_angle(100 * mm, path * n_tis / np.sqrt(n_tis**2 + 1),
+                                            n_tis)
+
+def x_cavity(crystal):
+    return abcd.StandingWaveCavity(
+        [abcd.FreeSpace(800 * mm), abcd.CurvedMirror(R=100 * mm, angle=theta),
+         abcd.FreeSpace(51.85 * mm), *crystal, abcd.FreeSpace(51.85 * mm),
+         abcd.CurvedMirror(R=100 * mm, angle=theta), abcd.FreeSpace(600 * mm)],
+        R1=np.inf, R2=np.inf, wavelength=tis.laser_wavelength)
+
+klm = kerr.KerrLensModel(x_cavity, path, n_tis, tis.nonlinear_index,
+                         tis.laser_wavelength, brewster=True, slices=6)
+print(f"fold angle {np.degrees(theta):.1f} deg, P_cr = {klm.critical_power / 1e6:.2f} MW")
+print(f"KLM strength at the output coupler {klm.klm_strength(1):.2f},"
+      f" in the crystal {klm.klm_strength('crystal'):.2f}")
+```
+
+Negative values mean the Kerr lens shrinks the mode there, which favours
+pulses at a hard aperture (output coupler) or with a small pump spot (crystal).
+{doc}`examples/klm_ti_sapphire` scans the mirror separation; the theory is in
+{doc}`theory/kerr_lens`.
 
 ## Where to go next
 

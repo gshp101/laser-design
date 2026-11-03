@@ -37,9 +37,36 @@ equations, integrated over the crystal length, for the circulating power
 
 with :math:`s_0 = (2/\\pi w_l^2) e^{-2r^2/w_l^2}` and :math:`\\bar N_2` the
 length-integrated upper-state density saturated by the standing-wave
-intensity :math:`2 P s_0(r)`. Spatial hole burning and pump bleaching are
+intensity :math:`2 P s_0(r)`. The power extracted from the gain is then
+``delta * P`` and the output coupler receives the share
+``T / (1 - exp(-delta))`` of it, which keeps the energy balance exact for
+lumped losses of any size. Spatial hole burning and pump bleaching are
 neglected. This reproduces the threshold formula above and automatically
 includes the pump-to-mode overlap in the slope efficiency.
+
+Ring resonators and other profiles
+----------------------------------
+All functions take ``gain_passes``, the number of passes through the gain per
+round trip: 2 for a standing-wave resonator (the default) and 1 for a
+unidirectional ring. In a ring the saturating intensity is ``P s0`` rather
+than ``2 P s0`` and the round-trip gain is ``sigma int N s0`` rather than
+twice that, so the threshold inversion doubles while the extracted power per
+unit gain is unchanged.
+
+The pump and laser transverse profiles can each be ``"gaussian"`` (1/e^2
+radius) or ``"tophat"`` (uniform out to the given radius). A top-hat pump
+describes a uniformly side-pumped rod; a top-hat laser profile is a crude
+model of a highly multimode beam filling a given radius. The threshold
+depends on the profiles only through the overlap integral
+:func:`mode_overlap`, which for two Gaussians is ``2 / (pi (w_l^2 + w_p^2))``:
+
+.. math::
+
+    P_{th} = \\frac{h\\nu_p \\left(\\delta + p\\,\\sigma_a N_0 l\\right)}
+                  {p\\,(\\sigma_e + \\sigma_a)\\,\\tau\\,\\eta_q\\,\\eta_{abs}\\,
+                   \\int s_0 r_p\\,dA},
+
+with ``p`` the number of gain passes.
 """
 
 from __future__ import annotations
@@ -50,6 +77,52 @@ import numpy as np
 from scipy import integrate, optimize
 
 from .materials import GainMedium
+
+PROFILES = ("gaussian", "tophat")
+
+
+def _check_profile(profile: str) -> None:
+    if profile not in PROFILES:
+        raise ValueError(f"profile must be one of {PROFILES}, not {profile!r}")
+
+
+def normalized_profile(r, radius: float, profile: str = "gaussian"):
+    """Transverse profile normalised to unit area integral [1/m^2].
+
+    ``"gaussian"``: ``(2 / pi w^2) exp(-2 r^2 / w^2)``;
+    ``"tophat"``: ``1 / (pi a^2)`` for ``r <= a`` and zero outside.
+    """
+    _check_profile(profile)
+    r = np.asarray(r, dtype=float)
+    if profile == "gaussian":
+        return 2 / (np.pi * radius**2) * np.exp(-2 * r**2 / radius**2)
+    return np.where(r <= radius, 1 / (np.pi * radius**2), 0.0)
+
+
+def mode_overlap(laser_radius: float, pump_radius: float, laser_profile: str = "gaussian",
+                 pump_profile: str = "gaussian") -> float:
+    """Overlap integral ``int s0 r_p dA`` of two normalised profiles [1/m^2].
+
+    Its inverse is the effective area that sets threshold and stored energy:
+    ``pi (w_l^2 + w_p^2) / 2`` for two Gaussians and ``pi a^2`` for a top-hat
+    pump of radius ``a`` filled by a smaller top-hat laser beam.
+    """
+    _check_profile(laser_profile)
+    _check_profile(pump_profile)
+    wl, wp = laser_radius, pump_radius
+    if laser_profile == "gaussian" and pump_profile == "gaussian":
+        return float(2 / (np.pi * (wl**2 + wp**2)))
+    if laser_profile == "tophat" and pump_profile == "tophat":
+        return float(1 / (np.pi * max(wl, wp) ** 2))
+    # one Gaussian (radius w), one top-hat (radius a)
+    w, a = (wl, wp) if laser_profile == "gaussian" else (wp, wl)
+    return float((1 - np.exp(-2 * a**2 / w**2)) / (np.pi * a**2))
+
+
+def effective_mode_area(laser_radius: float, pump_radius: float,
+                        laser_profile: str = "gaussian", pump_profile: str = "gaussian") -> float:
+    """``1 / mode_overlap``: the area over which inversion is extracted [m^2]."""
+    return 1.0 / mode_overlap(laser_radius, pump_radius, laser_profile, pump_profile)
 
 
 def round_trip_loss(output_coupling: float, passive_loss: float = 0.0,
@@ -74,15 +147,21 @@ def output_coupling_loss(output_coupling: float) -> float:
     return float(-np.log(1 - output_coupling))
 
 
-def threshold_inversion(delta: float, sigma: float, length: float) -> float:
-    """Inversion density needed for threshold, ``delta / (2 sigma l)`` [1/m^3]."""
-    return delta / (2 * sigma * length)
+def threshold_inversion(delta: float, sigma: float, length: float,
+                        gain_passes: int = 2) -> float:
+    """Inversion density needed for threshold, ``delta / (p sigma l)`` [1/m^3].
+
+    ``gain_passes`` ``p`` is 2 for a standing-wave and 1 for a ring resonator.
+    """
+    return delta / (gain_passes * sigma * length)
 
 
 def threshold_pump_power(material: GainMedium, laser_radius: float, pump_radius: float,
                          delta: float, absorbed_fraction: float,
-                         crystal_length: float = 0.0, doping: float = 0.0) -> float:
-    """Incident pump power at threshold for an end-pumped laser [W].
+                         crystal_length: float = 0.0, doping: float = 0.0,
+                         gain_passes: int = 2, laser_profile: str = "gaussian",
+                         pump_profile: str = "gaussian") -> float:
+    """Incident pump power at threshold [W].
 
     Parameters
     ----------
@@ -95,14 +174,19 @@ def threshold_pump_power(material: GainMedium, laser_radius: float, pump_radius:
         Fraction of incident pump absorbed, ``eta_abs``.
     crystal_length, doping : float
         Needed only for quasi-three-level media, to compute reabsorption.
+    gain_passes : int
+        Passes through the gain per round trip: 2 (standing wave) or 1 (ring).
+    laser_profile, pump_profile : str
+        ``"gaussian"`` or ``"tophat"``, see :func:`mode_overlap`.
     """
     sig = material.emission_cross_section + material.laser_absorption_cross_section
-    reabs = 2 * material.laser_absorption_cross_section * material.ion_density(doping) * crystal_length
+    reabs = (gain_passes * material.laser_absorption_cross_section
+             * material.ion_density(doping) * crystal_length)
+    overlap = mode_overlap(laser_radius, pump_radius, laser_profile, pump_profile)
     return float(
-        np.pi * material.pump_photon_energy * (laser_radius**2 + pump_radius**2)
-        * (delta + reabs)
-        / (4 * sig * material.upper_state_lifetime * material.quantum_efficiency
-           * absorbed_fraction)
+        material.pump_photon_energy * (delta + reabs)
+        / (gain_passes * sig * material.upper_state_lifetime * material.quantum_efficiency
+           * absorbed_fraction * overlap)
     )
 
 
@@ -110,14 +194,23 @@ def slope_efficiency(material: GainMedium, output_coupling: float, delta: float,
                      absorbed_fraction: float, overlap: float = 1.0) -> float:
     """Ideal slope efficiency with respect to incident pump power.
 
-    ``eta_s = eta_abs eta_q (lambda_p / lambda_l) (T / delta) eta_ov``.
+    ``eta_s = eta_abs eta_q (lambda_p / lambda_l) eta_out eta_ov`` with the
+    output fraction ``eta_out = T / (1 - exp(-delta))``: the share of the
+    power lost per round trip that leaves through the output coupler.
     ``overlap`` is the mode-overlap factor (1 for a pump much smaller than the
-    laser mode). Using ``T / delta`` (rather than ``-ln(1-T) / delta``) matches
-    the energy bookkeeping of :func:`end_pumped_cw`, which outputs ``T`` times
-    the circulating power; the two agree for low-loss cavities.
+    laser mode). For low-loss cavities ``eta_out`` reduces to ``T / (T + L)``.
     """
     return float(absorbed_fraction * material.quantum_efficiency * material.quantum_defect
-                 * output_coupling / delta * overlap)
+                 * output_fraction(output_coupling, delta) * overlap)
+
+
+def output_fraction(output_coupling: float, delta: float) -> float:
+    """Share of the round-trip loss that leaves through the output coupler.
+
+    ``T / (1 - exp(-delta))``, which is exact for lumped losses whatever their
+    size.
+    """
+    return float(output_coupling / (1 - np.exp(-delta)))
 
 
 @dataclass
@@ -129,7 +222,7 @@ class CWResult:
     output_power : float
         Power transmitted by the output coupler [W].
     circulating_power : float
-        One-way intracavity power [W].
+        Mean one-way intracavity power [W].
     threshold : float
         Incident pump threshold [W].
     above_threshold : bool
@@ -146,7 +239,9 @@ class CWResult:
 
 def _length_integrated_gain(material: GainMedium, absorbed_power: float,
                             w_l: float, w_p: float, circulating: float,
-                            reabsorption: float) -> float:
+                            reabsorption: float, gain_passes: int = 2,
+                            laser_profile: str = "gaussian",
+                            pump_profile: str = "gaussian") -> float:
     """Saturated logarithmic round-trip gain (see module docstring)."""
     sig_e = material.emission_cross_section
     sig_a = material.laser_absorption_cross_section
@@ -154,26 +249,38 @@ def _length_integrated_gain(material: GainMedium, absorbed_power: float,
     hnu_l = material.laser_photon_energy
     rate = material.quantum_efficiency * absorbed_power / material.pump_photon_energy
 
+    p = gain_passes
+
     def integrand(r):
-        s0 = 2 / (np.pi * w_l**2) * np.exp(-2 * r**2 / w_l**2)
-        rp = 2 / (np.pi * w_p**2) * np.exp(-2 * r**2 / w_p**2)
-        intensity = 2 * circulating * s0
+        s0 = normalized_profile(r, w_l, laser_profile)
+        rp = normalized_profile(r, w_p, pump_profile)
+        intensity = p * circulating * s0
         # length-integrated N2 per unit area; reabsorption = sig_a * N0 * l
         sat = 1 + (sig_e + sig_a) * tau * intensity / hnu_l
         n2l = (rate * rp * tau + reabsorption * tau * intensity / hnu_l) / sat
-        local = 2 * ((sig_e + sig_a) * n2l - reabsorption)
+        local = p * ((sig_e + sig_a) * n2l - reabsorption)
         return local * s0 * 2 * np.pi * r
 
-    r_max = 4 * max(w_l, w_p)
-    val, _ = integrate.quad(integrand, 0, r_max, limit=200)
+    def extent(w, profile):
+        return 4 * w if profile == "gaussian" else w
+
+    r_max = extent(w_l, laser_profile)
+    points = [w for w, prof in ((w_l, laser_profile), (w_p, pump_profile))
+              if prof == "tophat" and w < r_max]
+    val, _ = integrate.quad(integrand, 0, r_max, limit=200, points=points or None)
     return float(val)
 
 
 def end_pumped_cw(material: GainMedium, pump_power: float, laser_radius: float,
                   pump_radius: float, output_coupling: float, passive_loss: float,
                   absorbed_fraction: float, crystal_length: float = 0.0,
-                  doping: float = 0.0) -> CWResult:
-    """CW output of an end-pumped laser from the spatially resolved model.
+                  doping: float = 0.0, gain_passes: int = 2,
+                  laser_profile: str = "gaussian",
+                  pump_profile: str = "gaussian") -> CWResult:
+    """CW output from the spatially resolved model.
+
+    Despite the name this covers any pump geometry that a transverse profile
+    describes: a top-hat ``pump_profile`` models a uniformly side-pumped rod.
 
     Parameters
     ----------
@@ -190,6 +297,10 @@ def end_pumped_cw(material: GainMedium, pump_power: float, laser_radius: float,
         Fraction of incident pump absorbed.
     crystal_length, doping : float
         Only needed for quasi-three-level media.
+    gain_passes : int
+        2 for a standing-wave, 1 for a unidirectional ring resonator.
+    laser_profile, pump_profile : str
+        ``"gaussian"`` or ``"tophat"``.
 
     Returns
     -------
@@ -198,11 +309,14 @@ def end_pumped_cw(material: GainMedium, pump_power: float, laser_radius: float,
     delta = round_trip_loss(output_coupling, passive_loss)
     p_abs = pump_power * absorbed_fraction
     reabs = material.laser_absorption_cross_section * material.ion_density(doping) * crystal_length
+    profiles = dict(gain_passes=gain_passes, laser_profile=laser_profile,
+                    pump_profile=pump_profile)
     p_th = threshold_pump_power(material, laser_radius, pump_radius, delta,
-                                absorbed_fraction, crystal_length, doping)
+                                absorbed_fraction, crystal_length, doping, **profiles)
 
     def excess(p):
-        return _length_integrated_gain(material, p_abs, laser_radius, pump_radius, p, reabs) - delta
+        return _length_integrated_gain(material, p_abs, laser_radius, pump_radius, p, reabs,
+                                       **profiles) - delta
 
     g0 = excess(0.0) + delta
     if g0 <= delta:
@@ -213,7 +327,10 @@ def end_pumped_cw(material: GainMedium, pump_power: float, laser_radius: float,
         if hi > 1e12:  # pragma: no cover
             raise RuntimeError("Could not bracket circulating power")
     p_circ = optimize.brentq(excess, 0.0, hi, xtol=1e-9 * hi, rtol=1e-10)
-    return CWResult(p_circ * output_coupling, p_circ, p_th, True, g0)
+    # The model's extracted power is delta * P (log gain times mean circulating
+    # power); the output coupler takes its share of it.
+    p_out = p_circ * delta * output_fraction(output_coupling, delta)
+    return CWResult(p_out, p_circ, p_th, True, g0)
 
 
 # ---------------------------------------------------------------------- #

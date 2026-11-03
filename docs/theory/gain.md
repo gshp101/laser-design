@@ -45,11 +45,13 @@ $$
 
 and the gain condition is
 $2\int[(\sigma_e+\sigma_a)\bar N_2 - \sigma_a N_0 l]s_0\,dA = \delta$, solved by
-root finding. Output power is $TP$. This reproduces the threshold formula
+root finding. The power extracted from the gain is $\delta P$ and the output
+coupler takes the share $\eta_{out} = T/(1 - e^{-\delta})$ of it, which is
+exact for lumped losses of any size. This reproduces the threshold formula
 exactly and gives the slope efficiency including pump/mode overlap:
 
 - when $w_p \ll w_l$ the slope approaches the ideal
-  $\eta_{abs}\eta_q(\lambda_p/\lambda_l)T/\delta$;
+  $\eta_{abs}\eta_q(\lambda_p/\lambda_l)\eta_{out}$;
 - when $w_p > w_l$ pump light in the wings is wasted and the slope drops.
 
 ## Plane-wave results (Rigrod)
