@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath("../src"))
 project = "laserdesign"
 author = "Joe"
 copyright = "2026, Joe"
-release = "0.1.0"
+release = "0.2.0"
 
 extensions = [
     "myst_parser",

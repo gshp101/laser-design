@@ -56,3 +56,56 @@ def test_material_overrides_apply():
     spec = DesignSpec(material="nd:yag", material_overrides={"thermal_conductivity": 10.0})
     assert spec.gain_medium().thermal_conductivity == 10.0
     assert build_laser(spec).material.thermal_conductivity == 10.0
+
+
+def test_new_presets_match_examples():
+    import passive_qswitch_nd_yag_cr_yag as e5
+    import ring_nd_yvo4 as e8
+    import side_pumped_nd_yag as e7
+
+    a = build_laser(presets.passive_nd_yag_cr_yag()).passively_q_switched(8.0, 0.85, "cr:yag",
+                                                                          "Cr:YAG")
+    b = e5.build().passively_q_switched(8.0, 0.85, "cr:yag", "Cr:YAG")
+    assert a["energy"] == pytest.approx(b["energy"], rel=1e-3)
+    side = build_laser(presets.side_pumped_nd_yag())
+    assert side.analyze(400.0).output_power == pytest.approx(
+        e7.build(0.8).analyze(400.0).output_power, rel=1e-3)
+    ring = build_laser(presets.ring_nd_yvo4())
+    assert ring.analyze(12.0).gain_passes == 1
+    assert ring.analyze(12.0).output_power == pytest.approx(
+        e8.build(e8.ring, e8.RING_LOSS).analyze(12.0).output_power, rel=1e-3)
+
+
+def test_klm_preset_kerr_model():
+    from laserdesign.gui.spec import kerr_model
+
+    spec = presets.klm_ti_sapphire()
+    laser = build_laser(spec)
+    assert laser.analyze(spec.pump_power).stable
+    km = kerr_model(spec, laser.thermal_focal_length(spec.pump_power))
+    cav = km.cold_cavity()
+    # thermal lens sits at the crystal centre under the usual name
+    assert cav.spot_size_at("crystal thermal lens") > 0
+    assert km.brewster and km.slices == spec.klm_slices
+    assert abs(km.klm_strength(1)) < 10
+
+
+def test_ring_and_location_validation():
+    spec = presets.ring_nd_yvo4()
+    spec.mode = "modelock"
+    spec.sesam_location = "mirror2"
+    assert any("ring has no end mirrors" in p for p in spec.validate())
+    spec.sesam_location = "M3"
+    assert spec.validate() == []
+    spec.sesam_location = "nowhere"
+    assert any("not an element name" in p for p in spec.validate())
+    spec = DesignSpec(pump_geometry="side", absorption_efficiency=1.5)
+    assert any("Absorption efficiency" in p for p in spec.validate())
+
+
+def test_old_json_without_new_fields_loads(tmp_path):
+    d = presets.cw_nd_yvo4().to_dict()
+    for key in ("cavity_type", "pump_geometry", "crystal_brewster", "klm_slices"):
+        d.pop(key)
+    spec = DesignSpec.from_dict(d)
+    assert spec.cavity_type == "standing" and spec.pump_geometry == "end"

@@ -1,8 +1,9 @@
 # laserdesign
 
 A Python library and Qt GUI for designing solid state lasers:
-resonator stability and modes, pump absorption, thermal lensing, gain and
-threshold, CW output, Q-switching, mode locking and M² estimates.
+resonator stability and modes (standing-wave and ring), end and side
+pumping, thermal lensing, gain and threshold, CW output, active and passive
+Q-switching, SESAM and Kerr-lens mode locking, and M² estimates.
 
 ```python
 import numpy as np
@@ -40,7 +41,7 @@ Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build
 (a `.readthedocs.yaml` is included for hosting on Read the Docs). It contains:
 
 - a library tutorial and a GUI guide,
-- four worked example designs,
+- eight worked example designs,
 - a theory page for each module with equations, references and assumptions,
 - a validation summary and a developer guide,
 - the full API reference.
@@ -54,6 +55,8 @@ Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build
 3. Qt (PySide6) GUI that guides the user through building a laser (done;
    `laserdesign-gui`, guide in `docs/gui.md`).
 4. Packaging, CI, full documentation and GUI tutorial (done).
+5. Passive Q-switching, Kerr-lens mode locking, side-pumped rods and ring
+   lasers in the library, examples and GUI (done).
 
 ## References
 

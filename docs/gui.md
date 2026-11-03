@@ -15,7 +15,9 @@ laserdesign-gui my_design.json  # open a saved design
 ```
 
 The window opens with the CW Nd:YVO4 example loaded. **Examples** in the menu
-bar loads any of the three worked designs from {doc}`examples/index`.
+bar loads any of seven worked designs from {doc}`examples/index`: CW,
+actively and passively Q-switched, SESAM and Kerr-lens mode-locked, a
+side-pumped rod and a ring laser.
 **File → New** starts a blank design, and **File → Save / Open** stores
 designs as JSON files.
 
@@ -91,8 +93,10 @@ operating point sits comfortably inside the band and the mode ratio is right.
    insertion loss is included here).
 2. Choose **Q-switched** and a 10 kHz repetition rate.
 
-For **SESAM mode-locked** operation, end mirror 2 is the SESAM. Enter its
-saturation fluence and modulation depth here.
+For **SESAM mode-locked** operation, enter the SESAM's saturation fluence
+and modulation depth and choose where it sits: an end mirror or, for example
+in a ring, a named element. The other modes are described in
+[Other laser types](#other-laser-types) below.
 
 ### Step 5: results
 
@@ -152,12 +156,83 @@ print(laser.q_switched(spec.pump_power, spec.rep_rate)["energy"])
 ```
 
 so you can sketch a design in the GUI and then script parameter scans on it.
+For a side-pumped design `build_laser` returns a `SidePumpedRodLaser`, and
+`laserdesign.gui.spec.kerr_model(spec, f_thermal)` gives the
+{class}`~laserdesign.kerr.KerrLensModel` the KLM results use.
+
+(other-laser-types)=
+## Other laser types
+
+Each of these has a preset under **Examples** that you can load and modify.
+
+### Side-pumped rods
+
+![Side-pumped rod on step 2](gui/images/step2_pump_side.png)
+
+On step 2, set **Pump geometry** to *Side-pumped rod*. The crystal length
+from step 1 becomes the rod length. Enter the diode (or lamp) power, the rod
+radius and the **absorption efficiency**, the fraction of pump light absorbed
+in the rod. **Thermal lens in resonator** chooses which of the bifocal
+lenses the resonator uses (see {doc}`theory/side_pumping`); check the radial
+and tangential cases for a polarised laser. **Multimode fill** is the
+multimode beam radius as a fraction of the rod radius; leave it at *TEM00*
+for an aperture-limited single-mode laser, whose clipping at the rod is then
+added to the losses. The page plots the bifocal thermal lens against pump
+power and the temperature profile, and warns how close you are to the
+fracture limit.
+
+### Ring resonators
+
+![A bow-tie ring on step 3](gui/images/step3_resonator_ring.png)
+
+On step 3, set **Resonator type** to *Ring*. The end-mirror radii are then
+ignored and the table describes one complete loop; enter the curved mirrors
+as fold mirrors with their radius and angle of incidence. Give names to the
+mirrors you want to put an output coupler, SESAM, absorber or aperture on.
+All results use one gain pass per round trip and a repetition rate of c/L
+({doc}`theory/ring_resonators`).
+
+### Brewster-cut crystals
+
+Tick **Brewster-cut** on step 1 for a crystal with Brewster-angled faces
+(Ti:sapphire in an X or Z cavity). The crystal length is then the path
+inside the crystal, and the resonator includes the crystal's astigmatism.
+Compensate it with the fold angle of the curved mirrors around the crystal;
+{func}`laserdesign.abcd.astigmatism_compensation_angle` gives the angle.
+
+### Passive Q-switching
+
+![Passive Q-switch settings](gui/images/step4_operation_passive.png)
+
+Choose **Passive Q-switch** on step 4, the absorber (Cr⁴⁺:YAG), its
+small-signal initial transmission T₀ and where it sits. Usually the absorber
+is a *medium* element on step 3 (for example 2 mm of n = 1.82, named
+"Cr:YAG"); the mode size is read there. The results give the bleaching
+criterion (must exceed 1), the threshold with the unbleached absorber, pulse
+energy, width, peak power, repetition rate and average power, and plot the
+repetition rate against pump power and the energy and width against T₀
+({doc}`theory/passive_qswitching`).
+
+![Passive Q-switch results](gui/images/step5_results_passive.png)
+
+### Kerr-lens mode locking
+
+Choose **Kerr-lens mode-locked** on step 4. Pick the **aperture** where the
+Kerr effect is read: an end mirror or named element for a hard aperture, or
+*Gain crystal* for soft-aperture KLM. **Crystal slices** sets how finely the
+Kerr lens is resolved (6 is usually enough), and **Target pulse width** sets
+the soliton dispersion estimate. The results give the critical power, the KLM
+strength δ at the aperture and in the crystal for both planes, the
+intracavity pulse energy and peak power, and the net GDD needed. The plots
+show the self-consistent mode size against normalised power and how δ changes
+with pump power through the thermal lens ({doc}`theory/kerr_lens`).
+
+![KLM results](gui/images/step5_results_klm.png)
 
 ## Limitations
 
-- The GUI models end-pumped lasers with standing-wave resonators. Side-pumped
-  rods and ring resonators are available in the library
-  ({doc}`examples/koechner_side_pumped_rod`) but not yet in the GUI.
-- The mode-locking step assumes the SESAM is end mirror 2.
 - The results are only as accurate as the models; see the theory pages for
-  their assumptions.
+  their assumptions. In particular the KLM figures describe the onset of the
+  Kerr effect, not the mode-locked pulse.
+- A Brewster-cut crystal's thermal lens is applied in the reduced
+  (equivalent-beam) frame without the extra tangential scaling.
