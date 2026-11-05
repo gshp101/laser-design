@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>laserdesign</title>
+  <meta name="description" content="Guided design of solid state lasers in the browser: cavity stability, thermal lens, pump absorption, gain, Q-switching, mode locking and M², computed by the laserdesign Python library under Pyodide.">
+  <link rel="icon" href="icons/app.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="icon" data-icon="app"></span>
+      <span><b>laserdesign</b> <span class="muted" id="version"></span></span>
+    </div>
+    <div class="actions">
+      <label class="select-wrap">
+        <span class="sr-only">Load an example</span>
+        <select id="presets" disabled><option value="">Examples…</option></select>
+      </label>
+      <button id="btn-new" disabled>New</button>
+      <button id="btn-open" disabled>Open…</button>
+      <button id="btn-save" disabled>Save</button>
+      <button id="btn-link" disabled title="Copy a link that contains this design">Copy link</button>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="steps" aria-label="Design steps">
+      <ol id="steps"></ol>
+    </nav>
+
+    <main>
+      <div id="loading" class="loading" role="status">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <div id="loading-text">Starting…</div>
+          <div class="muted small">The first visit downloads Python, NumPy and SciPy (about 30 MB); later visits use the browser cache.</div>
+        </div>
+      </div>
+
+      <section id="page" class="page" hidden>
+        <div class="page-head">
+          <span class="icon big" id="page-icon"></span>
+          <div>
+            <h1 id="page-title"></h1>
+            <p id="page-help" class="help"></p>
+          </div>
+        </div>
+        <div class="columns">
+          <div class="inputs" id="inputs"></div>
+          <div class="outputs">
+            <div id="busy" class="busy" hidden>Computing…</div>
+            <div id="info" class="info"></div>
+            <div id="notes"></div>
+            <div id="plots" class="plots"></div>
+          </div>
+        </div>
+        <div class="nav">
+          <button id="btn-back">◀ Back</button>
+          <button id="btn-next" class="primary">Next ▶</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="statusbar" id="status" aria-live="polite"></footer>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # laserdesign
 
-A Python library and Qt GUI for designing solid state lasers:
+A Python library, Qt GUI and browser app for designing solid state lasers:
 resonator stability and modes (standing-wave and ring), end and side
 pumping, thermal lensing, gain and threshold, CW output, active and passive
 Q-switching, SESAM and Kerr-lens mode locking, and M² estimates.
@@ -35,6 +35,21 @@ python -m pytest
 laserdesign-gui        # start the guided design GUI
 ```
 
+## Run it in a web browser
+
+The guided wizard also runs entirely in the browser: the page loads
+[Pyodide](https://pyodide.org) (CPython for WebAssembly) and runs this
+package, NumPy and SciPy client-side, so it can be hosted on any static web
+server such as GitHub Pages.
+
+```bash
+python tools/build_web.py --serve    # build into build/web and open http://localhost:8000
+```
+
+The `pages` workflow publishes it to GitHub Pages on every push to `main`
+(enable once under Settings → Pages → Source: GitHub Actions). See
+`docs/web.md` for offline hosting and how it works.
+
 ## Documentation
 
 Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build/html`
@@ -57,6 +72,8 @@ Build with `pip install -e ".[docs]"` and `sphinx-build -b html docs docs/_build
 4. Packaging, CI, full documentation and GUI tutorial (done).
 5. Passive Q-switching, Kerr-lens mode locking, side-pumped rods and ring
    lasers in the library, examples and GUI (done).
+6. Browser version of the wizard running the library under Pyodide (done;
+   `tools/build_web.py`, guide in `docs/web.md`).
 
 ## References
 
