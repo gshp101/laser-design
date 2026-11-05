@@ -10,11 +10,13 @@ def main(argv: list[str] | None = None) -> int:
     """Start the GUI. An optional argument is a design file to open."""
     from PySide6.QtWidgets import QApplication
 
+    from .icons import app_icon
     from .main_window import MainWindow
 
     argv = sys.argv if argv is None else argv
     app = QApplication.instance() or QApplication(argv)
     app.setApplicationName("laserdesign")
+    app.setWindowIcon(app_icon())
     win = MainWindow()
     if len(argv) > 1:
         win.open_path(Path(argv[1]))

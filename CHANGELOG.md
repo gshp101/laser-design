@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- GUI icons: one for each wizard step (step list and page headers), for the
+  pump geometry, resonator type and operating-mode choices, and an app icon
+  for the window and taskbar. They are original SVGs in
+  `laserdesign/gui/icons/`, drawn in the palette's text colour so they follow
+  light and dark mode. `app-icon.png` (512 × 512) in the repository root is
+  rendered from the same SVG by `tools/render_app_icon.py`.
+
 ## [0.2.0] - 2026-11-02
 
 ### Added

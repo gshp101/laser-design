@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2b4a"/><stop offset="1" stop-color="#0d1527"/></linearGradient>
+    <linearGradient id="mirror" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e9eef5"/><stop offset="1" stop-color="#9aa8bb"/></linearGradient>
+    <radialGradient id="glow"><stop offset="0" stop-color="#ff4d4d" stop-opacity=".45"/><stop offset=".6" stop-color="#ff4d4d" stop-opacity=".12"/><stop offset="1" stop-color="#ff4d4d" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- glow -->
+  <ellipse cx="34" cy="32" rx="30" ry="16" fill="url(#glow)"/>
+  <!-- TEM00 mode and output beam -->
+  <path d="M14 23C24 30 34 30 47 24.5V39.5C34 34 24 34 14 41Z" fill="#ff5a52" fill-opacity=".9"/>
+  <path d="M47 29.5h12v5H47z" fill="#ff5a52"/>
+  <!-- concave high reflector and flat output coupler -->
+  <path d="M12.5 15Q7 32 12.5 49h3Q10.5 32 15.5 15z" fill="url(#mirror)"/>
+  <path d="M45.5 18h3.5v28h-3.5z" fill="#c9d6e6" fill-opacity=".9"/>
+</svg>
