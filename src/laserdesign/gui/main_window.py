@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QEvent, QSize, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QListWidget, QMainWindow,
                                QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import __version__
-from . import presets
+from . import icons, presets
 from .pages import ALL_PAGES
 from .spec import DesignSpec
+
+STEP_ICON = 22  # px, icons in the step list
 
 
 class MainWindow(QMainWindow):
@@ -29,9 +31,10 @@ class MainWindow(QMainWindow):
         self.resize(1250, 780)
 
         self.steps = QListWidget()
-        self.steps.setFixedWidth(170)
+        self.steps.setFixedWidth(190)
         self.stack = QStackedWidget()
         self.pages = [cls() for cls in ALL_PAGES]
+        self.steps.setIconSize(QSize(STEP_ICON, STEP_ICON))
         for page in self.pages:
             self.steps.addItem(page.title)
             self.stack.addWidget(page)
@@ -62,6 +65,8 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self.refresh)
 
         self._build_menus()
+        self.setWindowIcon(icons.app_icon())
+        self.refresh_icons()
         self.load_spec(self.spec)
         self.go(0)
 
@@ -92,6 +97,19 @@ class MainWindow(QMainWindow):
                           f"<b>laserdesign {__version__}</b><p>Guided design of solid state "
                           "lasers. Physics after Siegman, Milonni & Eberly and Koechner; see "
                           "the documentation for the models and their assumptions.</p>")
+
+    def refresh_icons(self) -> None:
+        """Redraw step and page icons in the current palette."""
+        for row, page in enumerate(self.pages):
+            if page.icon_name:
+                self.steps.item(row).setIcon(icons.icon(page.icon_name))
+            page.refresh_icons()
+
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if (event.type() in (QEvent.Type.PaletteChange, QEvent.Type.ApplicationPaletteChange)
+                and hasattr(self, "pages")):
+            self.refresh_icons()
+        super().changeEvent(event)
 
     # ------------------------------------------------------------------ #
     def current(self) -> int:

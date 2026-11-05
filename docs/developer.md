@@ -23,10 +23,12 @@ src/laserdesign/
         presets.py    example designs as DesignSpecs
         widgets.py    unit-aware inputs, matplotlib canvas
         pages.py      the five wizard pages
+        icons.py      loads the SVG icons in gui/icons/ and renders them for Qt
         main_window.py, app.py
 examples/             runnable example designs (also used by the docs)
 tests/                pytest suite
-tools/                maintenance scripts (GUI screenshots)
+tools/                maintenance scripts (GUI screenshots, app icon PNG)
+app-icon.png          512 × 512 app icon, rendered from gui/icons/app.svg
 docs/                 Sphinx + MyST documentation
 ```
 
@@ -100,9 +102,23 @@ appears there automatically.
 ```bash
 for f in examples/*.py; do python "$f"; done           # docs/examples/images
 QT_QPA_PLATFORM=offscreen python tools/gui_screenshots.py  # docs/gui/images
+QT_QPA_PLATFORM=offscreen python tools/render_app_icon.py  # app-icon.png
 ```
 
 Commit the regenerated images together with the change that caused them.
+
+## Icons
+
+The GUI icons in `src/laserdesign/gui/icons/` were drawn for this project
+and are covered by the project's 0BSD licence. Step and choice icons are
+24 px line drawings: outlines use `currentColor`, which `icons.icon()`
+replaces with the palette's text colour (Qt's SVG renderer does not resolve
+`currentColor` itself), so they follow light and dark mode; the laser beam
+is a fixed red (`#e5484d`). Qt renders SVG Tiny, so avoid filters and other
+SVG 1.1 extras in new icons. Name a step icon in the page's `icon_name`, and
+name choice icons after the value they stand for (`pump-end`, `cavity-ring`,
+`mode-klm`, ...). `tests/test_gui_icons.py` checks that every icon used is
+bundled and renders.
 
 ## Releasing
 

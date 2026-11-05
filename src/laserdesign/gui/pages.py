@@ -28,11 +28,13 @@ from ..abcd import StandingWaveCavity
 from ..design import SidePumpedRodLaser
 from ..materials import MATERIALS, get_material
 from ..passive_qswitch import ABSORBERS
+from . import icons
 from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
                    library_location)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
+HEADER_ICON = 36  # px, icon beside each page title
 
 
 def _fmt(x: float, digits: int = 3) -> str:
@@ -46,6 +48,8 @@ class Page(QWidget):
 
     title = ""
     help_text = ""
+    #: Name of the page's icon in ``laserdesign/gui/icons``.
+    icon_name = ""
     edited = Signal()
 
     def __init__(self, parent=None):
@@ -66,9 +70,21 @@ class Page(QWidget):
         pass
 
     def _header(self, layout) -> None:
-        h = QLabel(f"<h2>{self.title}</h2><p>{self.help_text}</p>")
+        row = QHBoxLayout()
+        self.header_icon = QLabel()
+        self.header_icon.setFixedSize(HEADER_ICON, HEADER_ICON)
+        row.addWidget(self.header_icon, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(QLabel(f"<h2>{self.title}</h2>"), 1)
+        layout.addLayout(row)
+        h = QLabel(f"<p>{self.help_text}</p>")
         h.setWordWrap(True)
         layout.addWidget(h)
+
+    def refresh_icons(self) -> None:
+        """Redraw the page's icons in the current palette (light or dark)."""
+        if self.icon_name and hasattr(self, "header_icon"):
+            self.header_icon.setPixmap(
+                icons.icon(self.icon_name).pixmap(HEADER_ICON, HEADER_ICON))
 
 
 # ====================================================================== #
@@ -89,6 +105,7 @@ MATERIAL_FIELDS = [
 
 class GainMediumPage(Page):
     title = "1. Gain medium"
+    icon_name = "step-gain-medium"
     help_text = ("Choose the crystal, its doping and length. The material values are typical "
                  "literature numbers; edit any of them to match your crystal's data sheet.")
 
@@ -195,6 +212,7 @@ class GainMediumPage(Page):
 # ====================================================================== #
 class PumpPage(Page):
     title = "2. Pump"
+    icon_name = "step-pump"
     help_text = ("Choose end pumping (a focused beam along the laser axis) or side pumping "
                  "(a rod pumped uniformly from the side by diodes or lamps). Fibre-coupled "
                  "diodes are best described by their M² (fibre radius × NA × π / λ).")
@@ -276,6 +294,11 @@ class PumpPage(Page):
     def _geometry_changed(self, idx: int) -> None:
         self.geo_stack.setCurrentIndex(idx)
         self._emit()
+
+    def refresh_icons(self) -> None:
+        super().refresh_icons()
+        for i in range(self.geometry.count()):
+            self.geometry.setItemIcon(i, icons.icon(f"pump-{self.geometry.itemData(i)}"))
 
     def load(self, spec: DesignSpec) -> None:
         self._loading = True
@@ -387,6 +410,7 @@ COLS = ["Element", "Name", "Length [mm]", "R or f [mm]", "Angle [°]", "Index n"
 
 class ResonatorPage(Page):
     title = "3. Resonator"
+    icon_name = "step-resonator"
     help_text = ("For a standing-wave resonator, list the elements met going from end "
                  "mirror 1 (usually the pumped face) to end mirror 2. For a unidirectional "
                  "ring, list one full loop, with the curved mirrors as fold mirrors. Name "
@@ -572,6 +596,11 @@ class ResonatorPage(Page):
         self._emit()
 
     # -- protocol ------------------------------------------------------ #
+    def refresh_icons(self) -> None:
+        super().refresh_icons()
+        for i in range(self.cavity_type.count()):
+            self.cavity_type.setItemIcon(i, icons.icon(f"cavity-{self.cavity_type.itemData(i)}"))
+
     def load(self, spec: DesignSpec) -> None:
         self._loading = True
         self.cavity_type.setCurrentIndex(self.cavity_type.findData(spec.cavity_type))
@@ -701,6 +730,7 @@ class LocationCombo(QComboBox):
 
 class OperationPage(Page):
     title = "4. Operation"
+    icon_name = "step-operation"
     help_text = ("Choose the output coupling, the other losses and how the laser is run: "
                  "continuous wave, actively Q-switched with CW pumping, passively Q-switched "
                  "with a saturable absorber, SESAM mode-locked, or Kerr-lens mode-locked. "
@@ -787,6 +817,11 @@ class OperationPage(Page):
     def mode(self) -> str:
         return MODE_KEYS[max(self.group.checkedId(), 0)]
 
+    def refresh_icons(self) -> None:
+        super().refresh_icons()
+        for key, radio in self.radios.items():
+            radio.setIcon(icons.icon(f"mode-{key}"))
+
     def load(self, spec: DesignSpec) -> None:
         self._loading = True
         self.oc.set_si(spec.output_coupling)
@@ -860,6 +895,7 @@ class OperationPage(Page):
 # ====================================================================== #
 class ResultsPage(Page):
     title = "5. Results"
+    icon_name = "step-results"
     help_text = "Performance of the design. Go back to any step to change it; results update."
 
     def __init__(self, parent=None):

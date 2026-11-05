@@ -22,7 +22,8 @@ side-pumped rod and a ring laser.
 designs as JSON files.
 
 The step list on the left and the **Back / Next** buttons move between
-steps. The status bar shows the design name, or what is wrong with the
+steps. Each step, pump geometry, resonator type and operating mode has its
+own icon; the red line in each is the laser beam. The status bar shows the design name, or what is wrong with the
 current inputs.
 
 ## Tutorial: from a crystal to a Q-switched laser
