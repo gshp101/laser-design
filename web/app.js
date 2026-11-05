@@ -555,8 +555,10 @@ function status(text, bad = false) {
 }
 
 function fatal(text) {
-  $("loading").replaceChildren(h("div", { class: "error" }, text,
-    h("p", { class: "muted" }, "Check your connection, or see the documentation for hosting Pyodide yourself.")));
+  const box = $("loading");
+  box.querySelector(".splash-status").replaceChildren(h("div", { class: "error" }, text));
+  box.lastElementChild.replaceChildren(
+    h("p", { class: "muted" }, "Check your connection, or see the documentation for hosting Pyodide yourself."));
 }
 
 // ---------------------------------------------------------------------- //

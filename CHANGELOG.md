@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Browser version of the design wizard (`web/`): the five steps of the Qt
+- Browser version of the design wizard (`web/`), with the app icon on its loading screen: the five steps of the Qt
   GUI as a static web page that runs `laserdesign`, NumPy and SciPy in the
   browser with Pyodide, in a Web Worker. Examples, open/save of the same JSON
   design files, shareable links, light and dark mode, phone layout.
