@@ -112,9 +112,15 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .steps button:hover:not(:disabled) { background: var(--accent-soft); }
 
 main { flex: 1; min-width: 0; padding: 16px 20px 24px; }
-.loading { display: flex; gap: 14px; align-items: center; padding: 40px 10px; max-width: 560px; }
+.loading {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+  padding: 64px 16px 40px; max-width: 520px; margin: 0 auto;
+}
+.splash-icon { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 6px 24px rgba(13, 21, 39, 0.25); }
+.splash-name { font-size: 22px; font-weight: 600; }
+.splash-status { display: flex; align-items: center; gap: 10px; }
 .spinner {
-  width: 28px; height: 28px; border-radius: 50%; flex: none;
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
   border: 3px solid var(--line); border-top-color: var(--accent);
   animation: spin 0.9s linear infinite;
 }
