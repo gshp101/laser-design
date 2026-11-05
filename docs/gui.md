@@ -6,6 +6,8 @@ updates as you type, and you can jump back to any step at any time. It uses
 exactly the same models as the library, so a design built in the GUI gives
 the same numbers as the equivalent script.
 
+To use the wizard without installing anything, see the {doc}`browser version <web>`.
+
 ## Starting the GUI
 
 ```bash
@@ -121,6 +123,7 @@ chosen operating mode. The plots depend on the mode:
 Go back to any step, change something, and return: the results are
 recomputed from the current inputs.
 
+(design-files)=
 ## Design files
 
 Designs are saved as readable JSON in SI units, for example:

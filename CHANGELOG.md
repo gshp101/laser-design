@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Browser version of the design wizard (`web/`): the five steps of the Qt
+  GUI as a static web page that runs `laserdesign`, NumPy and SciPy in the
+  browser with Pyodide, in a Web Worker. Examples, open/save of the same JSON
+  design files, shareable links, light and dark mode, phone layout.
+  `laserdesign.web.report` computes each step's summary, results table and
+  plot data without Qt or matplotlib; `laserdesign.web.api` is the JSON
+  interface the page calls. `tools/build_web.py` builds the static site
+  (optionally with Pyodide copied in for offline use) and the new `pages`
+  workflow publishes it to GitHub Pages. Guide in `docs/web.md`.
 - GUI icons: one for each wizard step (step list and page headers), for the
   pump geometry, resonator type and operating-mode choices, and an app icon
   for the window and taskbar. They are original SVGs in

@@ -25,7 +25,7 @@ Worked {doc}`example designs <examples/index>` cover CW, actively and
 passively Q-switched, SESAM and Kerr-lens mode-locked, side-pumped and ring
 lasers, including a side-pumped rod after Koechner. The Qt
 {doc}`GUI <gui>` walks you through building a laser step by step on top of the
-same models.
+same models, and also runs in a web browser ({doc}`browser version <web>`).
 
 ```{toctree}
 :maxdepth: 2
@@ -35,6 +35,7 @@ installation
 conventions
 tutorial
 gui
+web
 examples/index
 ```
 

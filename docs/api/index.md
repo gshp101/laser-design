@@ -17,4 +17,5 @@ kerr
 beam_quality
 design
 gui
+web
 ```
