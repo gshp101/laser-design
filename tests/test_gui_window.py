@@ -80,6 +80,20 @@ def test_material_change_and_override(window, app):
     assert window.spec.material_overrides == {"thermal_conductivity": 10.0}
 
 
+def test_every_database_material_is_selectable(window, app):
+    from laserdesign.materials import MATERIALS
+    page = window.pages[0]
+    window.go(0)
+    assert page.material.count() == len(MATERIALS)
+    for key, mat in MATERIALS.items():
+        page.material.setCurrentIndex(page.material.findData(key))
+        app.processEvents()
+        assert window.spec.material == key
+        assert window.spec.material_overrides == {}
+        assert page.props["dn_dT"].si() == pytest.approx(mat.dn_dT, abs=1e-8)
+        assert "Sources:" in page.info.text()
+
+
 def test_resonator_table_add_move_remove(window, app):
     page = window.pages[2]
     window.go(2)

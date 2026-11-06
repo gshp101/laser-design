@@ -151,6 +151,8 @@ def gain_medium(spec: DesignSpec) -> dict:
         f"{mat.emission_cross_section * mat.upper_state_lifetime * 1e4 * 1e23:.3g}×10⁻²³ cm²·s "
         "(higher means lower threshold)",
     ]
+    if mat.notes:
+        info.append(f"<i>Sources: {html.escape(mat.notes)}</i>")
     z = np.linspace(0, max(spec.crystal_length, 1e-6), 120)
     p = plot("Pump absorbed along the crystal (single pass)", "depth [mm]",
              "absorbed fraction [%]",
