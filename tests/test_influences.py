@@ -47,7 +47,7 @@ def test_note_follows_the_design():
     passive = influences("Repetition rate", DesignSpec(mode="passive"))
     assert "pump_power" in [d["key"] for d in passive["inputs"]]
     # Ring resonators have no end mirrors.
-    ring = influences("Stability parameter m", DesignSpec(cavity_type="ring"))
+    ring = influences("Paraxial stability (A+D)/2", DesignSpec(cavity_type="ring"))
     assert "R1" not in [d["key"] for d in ring["inputs"]]
 
 

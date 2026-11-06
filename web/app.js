@@ -474,7 +474,11 @@ function renderSweepControls() {
     sweepBox.replaceChildren(hint("No result of this design can be plotted."));
     return;
   }
-  if (!sweepRow(sweep.label)) pickSweep(sweep.rows[0].label);
+  if (!sweepRow(sweep.label)) {
+    // Start on the paraxial stability: for an unstable design it shows how to fix it.
+    const para = sweep.rows.find((r) => r.label.startsWith("Paraxial stability"));
+    pickSweep((para || sweep.rows[0]).label);
+  }
   const row = sweepRow(sweep.label), inp = sweepInput();
   const id = () => "f" + fieldCount++;
   const qId = id(), iId = id(), loId = id(), hiId = id(), nId = id();

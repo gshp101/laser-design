@@ -89,7 +89,8 @@ def test_unstable_resonator_is_reported():
     spec.elements = [{"type": "crystal"}, {"type": "space", "length": 2.0}]
     res = _run(spec, "resonator")
     assert any("Unstable" in line for line in res["info"])
-    assert _run(spec, "results")["rows"][0] == ["Resonator", "unstable at this pump power"]
+    rows = dict(_run(spec, "results")["rows"])
+    assert rows["Paraxial stability (A+D)/2"].endswith(", unstable")
 
 
 def test_invalid_design_gives_problems_not_exceptions():

@@ -118,8 +118,20 @@ in a ring, a named element. The other modes are described in
 ![Results for the Q-switched design](gui/images/step5_results_qswitch.png)
 
 The table lists the operating point (absorbed power, heat load, thermal lens,
-mode sizes), the CW performance and M² estimate, and the results for the
-chosen operating mode. The plots depend on the mode:
+paraxial stability, mode sizes), the CW performance and M² estimate, and the
+results for the chosen operating mode.
+
+**Paraxial stability (A+D)/2** is m = (A+D)/2 of the round-trip ABCD matrix,
+with the crystal and its thermal lens at the chosen pump power. The resonator
+is stable for −1 < m < 1. It shows one number when the tangential and
+sagittal planes agree and "t / s" when fold angles or Brewster surfaces
+split them. Unlike the rest of the table it is defined for an unstable
+resonator too, so when the resonator is unstable the Results step still
+shows it (with the pump, heat load and thermal lens) and marks it
+"unstable"; plotting it against an input, with the stable band shaded, is
+the quickest way to see what brings the design back.
+
+The plots depend on the mode:
 
 - **CW:** output power and M² against pump power.
 - **Q-switched:** pulse energy, pulse width and average power against
@@ -159,7 +171,7 @@ The inputs offered are the ones in the hover note that are continuous
 numbers: powers, sizes, losses, the absorber and SESAM settings, the
 material constants (swept as overrides of the material) and, for "Resonator
 elements and spacings", each air gap, fold-mirror radius and lens focal
-length separately. Choices such as the material or where the SESAM sits are
+length separately (and each fold mirror's angle). Choices such as the material or where the SESAM sits are
 not offered. The range starts at a sensible span around the current value
 (a decade either side for the Q-switch repetition rate, which is drawn on a
 log axis), and you can edit it. Points where the resonator is unstable or
