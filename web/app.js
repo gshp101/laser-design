@@ -3,7 +3,7 @@
 // in a Web Worker (worker.js). This file only builds forms, keeps the design
 // (a DesignSpec as plain JSON, SI units) and draws the reports.
 
-import { drawPlot } from "./plot.js";
+import { drawPlot, fmt } from "./plot.js";
 
 // ---------------------------------------------------------------------- //
 // Configuration
@@ -436,7 +436,118 @@ function operationInputs() {
 let resultRows = null;
 function resultsInputs() {
   resultRows = h("tbody");
-  return [h("table", { class: "rows" }, resultRows)];
+  return [h("table", { class: "rows" }, resultRows), sweepCard()];
+}
+
+// Plot a result against one of the inputs that set it (laserdesign.gui.sweep).
+// The choice survives recomputation; the plot is drawn above the step's own plots.
+const sweep = { label: null, key: null, lo: null, hi: null, points: 25, log: false, plot: null, rows: [] };
+let sweepBox = null;
+function sweepCard() {
+  sweepBox = h("div", { class: "sweep" });
+  return card("Plot a result against an input", sweepBox);
+}
+
+function sweepRow(label) { return sweep.rows.find((r) => r.label === label); }
+function sweepInput() {
+  const row = sweepRow(sweep.label);
+  return row && row.inputs.find((i) => i.key === sweep.key);
+}
+
+function pickSweep(label, key = null) {
+  const row = sweepRow(label);
+  if (!row) return;
+  const changedRow = sweep.label !== label;
+  sweep.label = label;
+  const inp = row.inputs.find((i) => i.key === (key ?? sweep.key)) ||
+    row.inputs.find((i) => i.key === "pump_power") || row.inputs[0];
+  if (changedRow || sweep.key !== inp.key) {
+    sweep.key = inp.key;
+    sweep.lo = inp.lo; sweep.hi = inp.hi; sweep.log = inp.log;
+  }
+  renderSweepControls();
+}
+
+function renderSweepControls() {
+  if (!sweepBox) return;
+  if (!sweep.rows.length) {
+    sweepBox.replaceChildren(hint("No result of this design can be plotted."));
+    return;
+  }
+  if (!sweepRow(sweep.label)) pickSweep(sweep.rows[0].label);
+  const row = sweepRow(sweep.label), inp = sweepInput();
+  const id = () => "f" + fieldCount++;
+  const qId = id(), iId = id(), loId = id(), hiId = id(), nId = id();
+  const qSel = h("select", { id: qId }, sweep.rows.map((r) =>
+    h("option", { value: r.label, selected: r.label === sweep.label }, r.label)));
+  qSel.addEventListener("change", () => pickSweep(qSel.value));
+  const groups = [];
+  let grp = null, stepName = null;
+  for (const i of row.inputs) {
+    if (i.step !== stepName) { stepName = i.step; grp = h("optgroup", { label: i.step }); groups.push(grp); }
+    grp.append(h("option", { value: i.key, selected: i.key === sweep.key }, i.unit ? `${i.name} [${i.unit}]` : i.name));
+  }
+  const iSel = h("select", { id: iId }, groups);
+  iSel.addEventListener("change", () => pickSweep(sweep.label, iSel.value));
+  const bound = (v) => (v === null || v === undefined ? null : String(v));
+  const numIn = (fid, get, set) => {
+    const el = h("input", { type: "number", id: fid, step: "any", min: bound(inp.min), max: bound(inp.max),
+      value: round(get(), 4), inputmode: "decimal" });
+    el.addEventListener("change", () => { const v = parseFloat(el.value); if (Number.isFinite(v)) set(v); else el.value = round(get(), 4); });
+    return el;
+  };
+  const unit = h("span", { class: "unit" }, inp.unit);
+  const logBox = h("input", { type: "checkbox", checked: sweep.log, disabled: !(sweep.lo > 0) });
+  logBox.addEventListener("change", () => { sweep.log = logBox.checked; });
+  const points = h("input", { type: "number", id: nId, min: "3", max: "200", step: "1", value: String(sweep.points) });
+  points.addEventListener("change", () => { sweep.points = Math.max(3, Math.min(200, Math.round(parseFloat(points.value) || 25))); points.value = sweep.points; });
+  const plotBtn = h("button", { type: "button", class: "primary", onclick: () => runSweep() }, "Plot");
+  const clear = h("button", { type: "button", disabled: !sweep.plot, onclick: () => { sweep.plot = null; renderSweepControls(); redrawPlots(); } }, "Clear");
+  sweepBox.replaceChildren(
+    h("div", { class: "form" },
+      h("label", { for: qId }, "Result"), h("div", { class: "field" }, qSel),
+      h("label", { for: iId }, "Against"), h("div", { class: "field" }, iSel),
+      h("label", { for: loId }, "From"), h("div", { class: "field" }, numIn(loId, () => sweep.lo, (v) => { sweep.lo = v; }), unit),
+      h("label", { for: hiId }, "To"), h("div", { class: "field" }, numIn(hiId, () => sweep.hi, (v) => { sweep.hi = v; }), unit.cloneNode(true)),
+      h("label", { for: nId }, "Points"), h("div", { class: "field" }, points, h("label", { class: "unit" }, logBox, " log x"))),
+    hint(`Now ${fmt(inp.value)}${inp.unit ? " " + inp.unit : ""}. Every other input stays as designed.`),
+    h("div", { class: "sweep-buttons" }, plotBtn, clear));
+}
+
+let sweepSeq = 0;
+async function runSweep() {
+  if (!sweepInput()) return;
+  const seq = ++sweepSeq;
+  const busy = setTimeout(() => { $("busy").hidden = false; }, 200);
+  try {
+    const out = await call("sweep", { spec: toWire(spec), request: {
+      label: sweep.label, key: sweep.key, lo: sweep.lo, hi: sweep.hi, points: sweep.points, log: sweep.log } });
+    if (seq !== sweepSeq || STEPS[step].key !== "results") return;
+    if (out.error) { status(`Plot: ${out.error}`, true); return; }
+    sweep.plot = out;
+    renderSweepControls();
+    redrawPlots();
+  } catch (err) {
+    status(`Plot: ${err.message}`, true);
+  } finally {
+    clearTimeout(busy);
+    $("busy").hidden = true;
+  }
+}
+
+function updateSweep(rep) {
+  sweep.rows = rep.rows.map(([label], i) => ({ label, inputs: (rep.sweeps || [])[i] || [] })).filter((r) => r.inputs.length);
+  let inp = sweepInput();
+  if (!inp) {
+    // That result or input is gone (another operating mode or design): start afresh.
+    sweep.plot = null;
+    if (sweepRow(sweep.label)) pickSweep(sweep.label); else sweep.label = null;
+    inp = null;
+  } else if (!(inp.value >= Math.min(sweep.lo, sweep.hi) && inp.value <= Math.max(sweep.lo, sweep.hi))) {
+    sweep.lo = inp.lo; sweep.hi = inp.hi;  // the design moved outside the chosen range
+  }
+  renderSweepControls();
+  if (sweep.plot && inp) runSweep();
 }
 
 // A row of the results table; `tip` (from laserdesign.gui.influences) lists
@@ -471,6 +582,7 @@ function resultRow(label, value, tip) {
   row.addEventListener("focus", place);
   row.addEventListener("click", () => {
     place();
+    if (sweepRow(label)) pickSweep(label);
     const open = row.classList.contains("open");
     resultRows.querySelectorAll("tr.open").forEach((r) => r.classList.remove("open"));
     row.classList.toggle("open", !open);
@@ -491,7 +603,7 @@ const STEPS = [
   { key: "operation", title: "4. Operation", icon: "step-operation", inputs: operationInputs,
     help: "Choose the output coupling, the other losses and how the laser is run: continuous wave, actively Q-switched with CW pumping, passively Q-switched with a saturable absorber, SESAM mode-locked, or Kerr-lens mode-locked." },
   { key: "results", title: "5. Results", icon: "step-results", inputs: resultsInputs,
-    help: "Performance of the design. Rest the pointer on a row (or tap it) to see what sets it. Go back to any step to change it; results update." },
+    help: "Performance of the design. Rest the pointer on a row (or tap it) to see what sets it, and use “Plot a result against an input” to see how a result changes as one of those inputs is swept. Go back to any step to change it; results update." },
 ];
 
 function renderNav() {
@@ -566,10 +678,12 @@ function show(rep) {
   const notes = rep.notes.map((n) => { const d = h("div", { class: `note ${n.level}` }); d.innerHTML = n.text; return d; });
   if (rep.error && !rep.info.length) notes.unshift(h("div", { class: "note warn error" }, rep.error));
   $("notes").replaceChildren(...notes);
-  if (resultRows && STEPS[step].key === "results") {
+  const onResults = resultRows && STEPS[step].key === "results";
+  if (onResults) {
     resultRows.replaceChildren(...rep.rows.map(([k, v], i) => resultRow(k, v, (rep.tips || [])[i])));
+    updateSweep(rep);
   }
-  drawPlots(rep.plots);
+  redrawPlots();
   if (rep.problems && rep.problems.length) status(rep.problems.join("; "), true);
   else if (rep.error) status(rep.error, true);
   else status(spec.name);
@@ -581,10 +695,22 @@ function drawPlots(plots) {
   plots.forEach((p, i) => drawPlot(box.children[i], p));
 }
 
+// The step's plots, with a result-vs-input plot first on the results step.
+function redrawPlots() {
+  if (!lastReport) return;
+  const extra = STEPS[step].key === "results" && sweep.plot ? [sweep.plot] : [];
+  drawPlots([...extra, ...lastReport.plots]);
+  if (extra.length) {
+    const host = $("plots").firstElementChild;
+    host.classList.add("sweep-plot");
+    if (sweep.plot.note) host.append(h("div", { class: "note info" }, sweep.plot.note));
+  }
+}
+
 let resizeTimer = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (lastReport) drawPlots(lastReport.plots); }, 150);
+  resizeTimer = setTimeout(redrawPlots, 150);
 });
 
 function status(text, bad = false) {

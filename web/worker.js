@@ -2,7 +2,8 @@
 // page stays responsive while a design is computed.
 //
 // Messages in:  {id, cmd: "init", config} | {id, cmd: "catalog"} |
-//               {id, cmd: "normalise", spec} | {id, cmd: "run", spec, step}
+//               {id, cmd: "normalise", spec} | {id, cmd: "run", spec, step} |
+//               {id, cmd: "sweep", spec, request}
 // Messages out: {id, result} | {id, error} | {status: text}
 
 let pyodide = null;
@@ -42,6 +43,7 @@ self.onmessage = async (ev) => {
     else if (cmd === "catalog") result = JSON.parse(api.catalog());
     else if (cmd === "normalise") result = JSON.parse(api.normalise(JSON.stringify(ev.data.spec)));
     else if (cmd === "run") result = JSON.parse(api.run(JSON.stringify(ev.data.spec), ev.data.step));
+    else if (cmd === "sweep") result = JSON.parse(api.sweep(JSON.stringify(ev.data.spec), JSON.stringify(ev.data.request)));
     else throw new Error(`Unknown command ${cmd}`);
     self.postMessage({ id, result });
   } catch (err) {

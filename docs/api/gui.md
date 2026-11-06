@@ -8,3 +8,6 @@
 
 ```{automodule} laserdesign.gui.influences
 ```
+
+```{automodule} laserdesign.gui.sweep
+```

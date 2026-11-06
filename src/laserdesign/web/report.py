@@ -11,6 +11,7 @@ Every report has the same shape::
     {"info": [html line, ...],      # short summary lines (trusted HTML)
      "rows": [[label, value], ...], # result table (plain text)
      "tips": [tip | None, ...],     # per row, results step only (see below)
+     "sweeps": [[input, ...], ...], # per row, results step only (see below)
      "plots": [plot, ...],          # see below
      "notes": [{"level": "warn" | "info", "text": html}, ...],
      "error": str | None}
@@ -26,7 +27,9 @@ and a plot is::
 
 and a tip is :func:`laserdesign.gui.influences.influences`: what sets the
 quantity in that row, ``{"summary": str, "inputs": [{"key", "step", "name",
-"value"}, ...]}``.
+"value"}, ...]}``. ``sweeps`` lists, per row, the inputs that row can be
+plotted against (:meth:`laserdesign.gui.sweep.SweepInput.to_dict`; empty
+when the row is not a number); :func:`sweep_plot` draws one.
 
 The physics and wording follow the Qt wizard in :mod:`laserdesign.gui.pages`.
 """
@@ -42,6 +45,7 @@ from .. import gain, modelocking, pump, thermal
 from ..abcd import StandingWaveCavity
 from ..design import SidePumpedRodLaser
 from ..gui.influences import influences
+from ..gui.sweep import sweep, sweep_inputs
 from ..gui.spec import (
     CRYSTAL_LENS_NAME,
     DesignSpec,
@@ -76,7 +80,8 @@ DISCLAIMER = "<i>Results come from idealised models; see the theory pages for th
 # Helpers
 # ---------------------------------------------------------------------- #
 def _report(**kw) -> dict:
-    out = {"info": [], "rows": [], "tips": [], "plots": [], "notes": [], "error": None}
+    out = {"info": [], "rows": [], "tips": [], "sweeps": [], "plots": [], "notes": [],
+           "error": None}
     out.update(kw)
     return out
 
@@ -383,7 +388,37 @@ def results(spec: DesignSpec) -> dict:
         _sesam(spec, laser, rows, stable_ops, plots, notes)
     notes.append({"level": "info", "text": DISCLAIMER})
     return _report(rows=rows, plots=plots, notes=notes,
-                   tips=[influences(label, spec) for label, _ in rows])
+                   tips=[influences(label, spec) for label, _ in rows],
+                   sweeps=[[i.to_dict(spec) for i in sweep_inputs(label, spec)]
+                           for label, _ in rows])
+
+
+def sweep_plot(spec: DesignSpec, label: str, key: str, lo: float | None = None,
+               hi: float | None = None, points: int = 25, log: bool | None = None) -> dict:
+    """Results row ``label`` against input ``key`` (see :func:`laserdesign.gui.sweep.sweep`).
+
+    ``lo`` and ``hi`` are in the input's display units. Returns a plot, with
+    a marker at the current design.
+    """
+    d = sweep(label, key, spec, lo, hi, points, log)
+    many = len(d["series"]) > 1
+    lines = [series(d["x"], s["y"], s["label"] if many else label, ["solid", "dash", "dot"][i % 3])
+             for i, s in enumerate(d["series"])]
+    lines += [series([d["current"]], [y], markers=True, color=i, line=False)
+              for i, y in enumerate(d["current_y"]) if math.isfinite(y)]
+    out = plot(d["title"], d["xlabel"], d["ylabel"], *lines, xlog=d["xlog"],
+               vlines=[(d["current"], "this design")])
+    if d["unstable"] == len(d["x"]):
+        out["message"] = "No result anywhere in this range (the resonator is unstable or " \
+                         "the design is invalid)."
+    elif d["unstable"]:
+        out["note"] = (f"{d['unstable']} of {len(d['x'])} points have no result (unstable "
+                       "resonator or invalid design); the curve has gaps there.")
+        if d["refined"]:
+            lo, hi = d["refined"]
+            out["note"] += (f" Most of the range had none, so extra points were computed "
+                            f"between {lo:.4g} and {hi:.4g}.")
+    return out
 
 
 def _qswitch(spec, laser, op, rows, plots, notes) -> None:
