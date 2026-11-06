@@ -168,9 +168,25 @@ main { flex: 1; min-width: 0; padding: 16px 20px 24px; }
 .info { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
 .info:empty { display: none; }
 .info p { margin: 3px 0; }
-.rows { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+.rows { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; }
 .rows td { padding: 5px 12px; border-bottom: 1px solid var(--grid); }
-.rows td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.rows > tbody > tr:last-child > td { border-bottom: none; }
+.rows > tbody > tr > td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+/* What sets each result: shown on hover, keyboard focus or tap */
+.rows tr.has-tip { cursor: help; }
+.rows tr.has-tip > td:first-child { position: relative; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.rows tr.has-tip:hover > td, .rows tr.has-tip:focus-visible > td, .rows tr.has-tip.open > td { background: var(--accent-soft); }
+.rows tr.has-tip:focus-visible { outline: none; }
+.result-tip { display: none; position: absolute; z-index: 20; left: 8px; top: calc(100% + 2px); width: min(360px, 80vw); white-space: normal;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); font-size: 12px; line-height: 1.35; text-decoration: none; cursor: auto; }
+.rows tr.has-tip:hover .result-tip, .rows tr.has-tip:focus-visible .result-tip, .rows tr.has-tip.open .result-tip { display: block; }
+.result-tip.up { top: auto; bottom: calc(100% + 2px); }
+.result-tip p { margin: 0 0 6px; }
+.result-tip table { border-collapse: collapse; width: 100%; }
+.result-tip td { padding: 1px 0; border: none; background: none !important; text-align: left; }
+.result-tip td + td { padding-left: 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.result-tip tr.tip-step td { color: var(--muted); font-style: italic; padding-top: 4px; }
 .note { border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
 .note.warn { background: var(--warn-bg); }
 .note.info { background: var(--info-bg); }

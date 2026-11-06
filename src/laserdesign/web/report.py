@@ -10,6 +10,7 @@ Every report has the same shape::
 
     {"info": [html line, ...],      # short summary lines (trusted HTML)
      "rows": [[label, value], ...], # result table (plain text)
+     "tips": [tip | None, ...],     # per row, results step only (see below)
      "plots": [plot, ...],          # see below
      "notes": [{"level": "warn" | "info", "text": html}, ...],
      "error": str | None}
@@ -22,6 +23,10 @@ and a plot is::
                  "axis": "y" | "y2", "markers": bool, "color": int | None}],
      "hlines": [{"y": float, "axis": "y" | "y2", "dash": str, "label": str}],
      "vlines": [{"x": float}], "hspan": [lo, hi] | None, "message": str | None}
+
+and a tip is :func:`laserdesign.gui.influences.influences`: what sets the
+quantity in that row, ``{"summary": str, "inputs": [{"key", "step", "name",
+"value"}, ...]}``.
 
 The physics and wording follow the Qt wizard in :mod:`laserdesign.gui.pages`.
 """
@@ -36,6 +41,7 @@ import numpy as np
 from .. import gain, modelocking, pump, thermal
 from ..abcd import StandingWaveCavity
 from ..design import SidePumpedRodLaser
+from ..gui.influences import influences
 from ..gui.spec import (
     CRYSTAL_LENS_NAME,
     DesignSpec,
@@ -68,7 +74,7 @@ DISCLAIMER = "<i>Results come from idealised models; see the theory pages for th
 # Helpers
 # ---------------------------------------------------------------------- #
 def _report(**kw) -> dict:
-    out = {"info": [], "rows": [], "plots": [], "notes": [], "error": None}
+    out = {"info": [], "rows": [], "tips": [], "plots": [], "notes": [], "error": None}
     out.update(kw)
     return out
 
@@ -356,7 +362,8 @@ def results(spec: DesignSpec) -> dict:
     else:
         _sesam(spec, laser, rows, stable_ops, plots, notes)
     notes.append({"level": "info", "text": DISCLAIMER})
-    return _report(rows=rows, plots=plots, notes=notes)
+    return _report(rows=rows, plots=plots, notes=notes,
+                   tips=[influences(label, spec) for label, _ in rows])
 
 
 def _qswitch(spec, laser, op, rows, plots, notes) -> None:

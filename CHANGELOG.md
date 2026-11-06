@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Results step, desktop and browser: hovering over a row shows how the
+  quantity is found and the principal inputs that set it, grouped by wizard
+  step with their current values. The dependencies are written once, in the
+  new Qt-free module `laserdesign.gui.influences`, and follow the design (end
+  or side pumping, standing-wave or ring resonator, operating mode). The
+  browser report gains a `tips` list alongside `rows`.
 - Browser version of the design wizard (`web/`), with the app icon on its loading screen: the five steps of the Qt
   GUI as a static web page that runs `laserdesign`, NumPy and SciPy in the
   browser with Pyodide, in a Web Worker. Examples, open/save of the same JSON

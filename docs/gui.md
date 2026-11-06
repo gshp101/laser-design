@@ -120,6 +120,17 @@ chosen operating mode. The plots depend on the mode:
 
 ![Results for the mode-locked example](gui/images/step5_results_modelock.png)
 
+Rest the pointer on a row to see what sets that quantity: a one-line note
+on how it is found and the principal inputs behind it, grouped by the step
+where you set them and with their current values. The lists follow the
+design, so a side-pumped rod shows the rod radius and absorption efficiency
+where an end-pumped crystal shows the pump waist and M², and the repetition
+rate is an input for active Q-switching but a result (set by the pump and the
+absorber) for passive Q-switching. They name the inputs that matter most,
+not every one that enters the calculation. The notes are defined in
+{mod}`laserdesign.gui.influences`, which both the desktop and the browser
+versions use.
+
 Go back to any step, change something, and return: the results are
 recomputed from the current inputs.
 
