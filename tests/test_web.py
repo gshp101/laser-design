@@ -66,6 +66,24 @@ def test_resonator_plots_one_round_trip(name):
     assert w[0] == pytest.approx(w[-1])
 
 
+def test_unstable_resonator_still_plots_a_round_trip():
+    spec = presets.cw_nd_yvo4()
+    spec.elements = [{"type": "crystal"}, {"type": "space", "length": 0.4},
+                     {"type": "lens", "f": 0.05, "name": "L1"},
+                     {"type": "space", "length": 0.4}]
+    cav = build_laser(spec).resonator(spec.pump_power)
+    assert not cav.is_stable()
+    mode = _run(spec, "resonator")["plots"][0]
+    assert mode["message"] is None and mode["title"].startswith("Unstable")
+    assert "trial beam" in mode["series"][0]["label"]
+    x = mode["series"][0]["x"]
+    assert x[-1] == pytest.approx(2 * cav.physical_length * 1e3)
+    labels = [v["label"] for v in mode["vlines"]]
+    assert "L1" in labels and "M2" in labels
+    markers = mode["series"][-1]
+    assert markers["line"] is False and len(markers["x"]) == len(labels)
+
+
 def test_unstable_resonator_is_reported():
     spec = presets.cw_nd_yvo4()
     spec.elements = [{"type": "crystal"}, {"type": "space", "length": 2.0}]

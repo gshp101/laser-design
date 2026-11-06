@@ -163,7 +163,8 @@ export function drawPlot(host, p) {
     if (!finite(v.x)) continue;
     el("line", { x1: tx(v.x), x2: tx(v.x), y1: m.t, y2: m.t + H, class: "ref", "stroke-dasharray": DASH.dot }, body);
     if (v.label) {
-      const X = tx(v.x) - 3, Y = m.t + 4;
+      // Text sits left of its line, or right of it at the left edge of the frame.
+      const X = tx(v.x) - m.l < 12 ? tx(v.x) + 11 : tx(v.x) - 3, Y = m.t + 4;
       el("text", { x: X, y: Y, "text-anchor": "end", class: "ref-label",
         transform: `rotate(-90 ${X} ${Y})` }, body).textContent = v.label;
     }
@@ -192,8 +193,9 @@ export function drawPlot(host, p) {
       pen = true;
       pts.push([X, Y, x, y]);
     }
-    el("path", { d, class: `line c${color}`, "stroke-dasharray": DASH[s.dash] ?? "" }, body);
-    if (s.markers) for (const [X, Y] of pts) el("circle", { cx: X, cy: Y, r: 2.6, class: `dot c${color}` }, body);
+    if (s.line !== false) el("path", { d, class: `line c${color}`, "stroke-dasharray": DASH[s.dash] ?? "" }, body);
+    if (s.markers) for (const [X, Y] of pts) el("circle", { cx: X, cy: Y, r: s.line === false ? 3.2 : 2.6,
+      class: `dot c${color}${s.line === false ? " hollow" : ""}` }, body);
     drawn.push({ s, pts, color });
     if (s.label) legend.push({ label: s.label + (hasY2 ? (s.axis === "y2" ? " (right)" : " (left)") : ""), color, dash: s.dash });
   });
