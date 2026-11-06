@@ -115,6 +115,33 @@ def test_round_trip_profile_ring_is_one_loop():
     assert [label for _, label in prof.landmarks] == ["A", "mirror"]
 
 
+def test_launch_q_matches_eigenmode_on_mirror():
+    cav = abcd.StandingWaveCavity([abcd.FreeSpace(0.3)], R1=0.5, R2=0.8, wavelength=LAM)
+    q = cav.launch_q(cav.spot_size_on_mirror(1))
+    assert q == pytest.approx(cav.eigen_q())
+
+
+def test_round_trip_profile_unstable_trial_beam():
+    cav = abcd.StandingWaveCavity([abcd.FreeSpace(1.3)], R1=0.5, R2=0.5, wavelength=LAM)
+    assert not cav.is_stable()
+    with pytest.raises(ValueError):
+        cav.round_trip_profile()
+    prof = cav.round_trip_profile(q_start=cav.launch_q(200e-6))
+    assert prof.w[0] == pytest.approx(200e-6)
+    assert prof.z[-1] == pytest.approx(2.6)
+    assert prof.w[-1] > 5 * prof.w[0]  # runs away in one round trip
+
+
+def test_round_trip_landmarks_cover_every_element():
+    cav = abcd.StandingWaveCavity([abcd.FreeSpace(0.1), abcd.Medium(0.02, n=1.5),
+                                   abcd.FreeSpace(0.1), abcd.ThinLens(0.3),
+                                   abcd.FreeSpace(0.1)], R1=0.5, R2=0.5, wavelength=LAM)
+    marks = cav.round_trip_profile(q_start=cav.launch_q(1e-4)).landmarks
+    assert [label for _, label in marks] == ["M1", "medium", "lens", "M2", "lens",
+                                             "medium", "M1"]
+    assert marks[1][0] == pytest.approx(0.11)  # centre of the medium
+
+
 def test_thermal_lens_crystal_helper():
     els = abcd.crystal_with_thermal_lens(0.01, 1.82, 0.2, name="YAG")
     assert [e.name for e in els][1] == "YAG thermal lens"

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Resonator round-trip plot now also works for unstable resonators: it
+  follows a trial beam (pumped radius, wavefront matched to mirror 1) for
+  one round trip, so you can see where the beam runs away. Every cavity
+  element is marked on the plot. Library: `launch_q()` on both resonator
+  types and a `q_start` argument to `round_trip_profile()`; landmarks now
+  cover every element except air gaps.
 - Sixteen more gain media in the materials database, for twenty in all:
   Nd:GdVO4, Nd:YLF (1047 and 1053 nm), Nd:phosphate glass, Yb:KGW, Yb:KYW,
   Yb:phosphate glass, Yb:CaF2, Yb:Lu2O3, Cr:LiSAF, Cr:forsterite,

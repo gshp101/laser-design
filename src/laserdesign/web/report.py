@@ -20,7 +20,7 @@ and a plot is::
     {"title": str, "xlabel": str, "ylabel": str, "y2label": str | None,
      "xlog": bool, "ylog": bool, "ylim": [lo, hi] | None,
      "series": [{"x": [...], "y": [...], "label": str, "dash": "solid" | "dash" | "dot",
-                 "axis": "y" | "y2", "markers": bool, "color": int | None}],
+                 "axis": "y" | "y2", "markers": bool, "color": int | None, "line": bool}],
      "hlines": [{"y": float, "axis": "y" | "y2", "dash": str, "label": str}],
      "vlines": [{"x": float, "label": str}], "hspan": [lo, hi] | None, "message": str | None}
 
@@ -50,6 +50,7 @@ from ..gui.spec import (
     kerr_model,
     library_location,
     round_trip_mode,
+    trial_beam_summary,
 )
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
@@ -89,9 +90,9 @@ def _list(values) -> list:
 
 
 def series(x, y, label: str = "", dash: str = "solid", axis: str = "y",
-           markers: bool = False, color: int | None = None) -> dict:
+           markers: bool = False, color: int | None = None, line: bool = True) -> dict:
     return {"x": _list(x), "y": _list(y), "label": label, "dash": dash, "axis": axis,
-            "markers": markers, "color": color}
+            "markers": markers, "color": color, "line": line}
 
 
 def plot(title: str, xlabel: str, ylabel: str, *series_, y2label: str | None = None,
@@ -242,16 +243,22 @@ def resonator(spec: DesignSpec) -> dict:
     cav = laser.resonator(spec.pump_power)
     info, plots = [], []
     standing = isinstance(cav, StandingWaveCavity)
+    trip = round_trip_mode(cav, laser.pump_radius)
+    mode = [series(trip[plane].z / MM, trip[plane].w / UM,
+                   ("tangential" if plane == "t" else "sagittal")
+                   + (" (trial beam)" if trip["trial"][plane] else ""),
+                   "solid" if plane == "t" else "dash")
+            for plane in ("t", "s")]
+    marks = np.array([z for z, _ in trip["landmarks"]])
+    mode.append(series(marks / MM, np.interp(marks, trip["t"].z, trip["t"].w) / UM,
+                       markers=True, color=0, line=False))
+    ws = np.concatenate([trip["t"].w, trip["s"].w]) / UM
+    log = any(trip["trial"].values()) and ws.max() > 30 * ws.min()
+    plots.append(plot(f"{trip['title']} at {spec.pump_power:.3g} W pump",
+                      trip["xlabel"], "w [µm]", *mode, ylog=bool(log),
+                      ylim=None if log else (0, 1.08 * float(ws.max())),
+                      vlines=[(z / MM, label) for z, label in trip["landmarks"]]))
     if cav.is_stable():
-        trip = round_trip_mode(cav)
-        mode = [series(trip[plane].z / MM, trip[plane].w / UM,
-                       "tangential" if plane == "t" else "sagittal",
-                       "solid" if plane == "t" else "dash")
-                for plane in ("t", "s")]
-        top = max(float(trip[p].w.max()) for p in ("t", "s")) / UM
-        plots.append(plot(f"{trip['title']} at {spec.pump_power:.3g} W pump",
-                          trip["xlabel"], "w [µm]", *mode, ylim=(0, 1.08 * top),
-                          vlines=[(z / MM, label) for z, label in trip["landmarks"]]))
         w_l = cav.spot_size_at(CRYSTAL_LENS_NAME)
         pump_kind = "rod" if isinstance(laser, SidePumpedRodLaser) else "pump"
         info.append(f"<b>Stable</b> at {spec.pump_power:.3g} W: m = "
@@ -269,8 +276,10 @@ def resonator(spec: DesignSpec) -> dict:
                     f"{html.escape(nm)} {cav.spot_size_at(nm) / UM:.0f} µm" for nm in named[:6]))
             info.append("Ring: one gain pass per round trip, repetition rate c/L.")
     else:
-        plots.append(message_plot("Unstable at full pump power"))
-        info.append(_err(f"<b>Unstable</b> at {spec.pump_power:.3g} W."))
+        info.append(_err(f"<b>Unstable</b> at {spec.pump_power:.3g} W: m = "
+                         f"{cav.stability_parameter('t'):.3f} (t), "
+                         f"{cav.stability_parameter('s'):.3f} (s)."))
+        info.append(html.escape(trial_beam_summary(trip, laser.pump_radius, standing)))
     if stable_p:
         info.append(f"Stable pump range in the plot: {min(stable_p):.3g} to "
                     f"{max(stable_p):.3g} W")

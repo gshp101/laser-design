@@ -307,6 +307,20 @@ class ModeProfile:
     landmarks: list[tuple[float, str]] = field(default_factory=list)
 
 
+def _landmark_label(el: Element) -> str:
+    """Plot label for an element, or ``""`` for a plain air gap."""
+    if type(el) is FreeSpace:
+        return el.name
+    if el.name:
+        return el.name
+    for cls, label in ((CurvedMirror, "mirror"), (ThinLens, "lens"),
+                       (BrewsterPlate, "Brewster plate"), (Interface, "interface"),
+                       (Medium, "medium")):
+        if isinstance(el, cls):
+            return label
+    return type(el).__name__
+
+
 class _Resonator:
     """Shared machinery for standing-wave and ring resonators."""
 
@@ -376,9 +390,13 @@ class _Resonator:
         return self.spot_size(self.element_index(name), plane)
 
     def _sample(self, elements: Sequence[Element], plane: Plane,
-                points_per_element: int) -> ModeProfile:
-        """Sample the mode radius through ``elements``, starting at the reference plane."""
-        q = self.eigen_q(plane)
+                points_per_element: int, q: complex | None = None) -> ModeProfile:
+        """Sample the beam radius through ``elements`` from the reference plane.
+
+        Starts from the eigenmode unless a reduced ``q`` is given.
+        """
+        if q is None:
+            q = self.eigen_q(plane)
         zs, ws, starts, marks = [], [], [], []
         z0 = 0.0
         for el in elements:
@@ -388,8 +406,9 @@ class _Resonator:
                     qq = propagate_q(q, el.partial_matrix(frac, plane))
                     zs.append(z0 + frac * el.length)
                     ws.append(gaussian.spot_size(qq, self.wavelength))
-            elif isinstance(el, CurvedMirror) or el.name:
-                marks.append((z0, el.name or "mirror"))
+            label = _landmark_label(el)
+            if label:
+                marks.append((z0 + el.length / 2, label))
             q = propagate_q(q, el.matrix(plane))
             z0 += el.length
         if not zs:
@@ -400,19 +419,28 @@ class _Resonator:
         """Sample the mode radius along one forward pass of the element list."""
         return self._sample(self.elements, plane, points_per_element)
 
-    def round_trip_profile(self, plane: Plane = "t",
-                           points_per_element: int = 50) -> ModeProfile:
-        """Sample the mode radius over one full round trip.
+    def launch_q(self, w: float, plane: Plane = "t") -> complex:  # pragma: no cover
+        """A trial beam of radius ``w`` at the reference plane (see subclasses)."""
+        raise NotImplementedError
+
+    def round_trip_profile(self, plane: Plane = "t", points_per_element: int = 50,
+                           q_start: complex | None = None) -> ModeProfile:
+        """Sample the beam radius over one full round trip.
 
         For a :class:`StandingWaveCavity` the beam starts on end mirror 1,
         travels to end mirror 2 and comes back to mirror 1, so ``z`` runs from
-        0 to twice the physical length and the curve is symmetric about
-        mirror 2. For a :class:`RingCavity` it is one trip around the loop,
-        the same as :meth:`mode_profile`. ``landmarks`` marks the mirrors
-        (end mirrors as ``"M1"``/``"M2"``) and any named thin element, e.g.
-        the crystal's thermal lens; the last point equals the first.
+        0 to twice the physical length. For a :class:`RingCavity` it is one
+        trip around the loop. ``landmarks`` holds every element except plain
+        air gaps, at its centre, labelled with its name or its kind (end
+        mirrors are ``"M1"``/``"M2"``).
+
+        By default the beam is the eigenmode, so the curve closes on itself
+        and is symmetric about mirror 2. Pass a reduced ``q_start`` (e.g. from
+        :meth:`launch_q`) to follow any beam for one round trip instead; this
+        works for unstable resonators too, where the radius at the end differs
+        from the start and shows where the beam runs away.
         """
-        return self._sample(self._round_trip_elements(), plane, points_per_element)
+        return self._sample(self._round_trip_elements(), plane, points_per_element, q_start)
 
     @property
     def physical_length(self) -> float:
@@ -478,13 +506,23 @@ class StandingWaveCavity(_Resonator):
         return [*self.elements, CurvedMirror(self.R2, name="M2"), *back,
                 CurvedMirror(self.R1, name="M1")]
 
-    def round_trip_profile(self, plane: Plane = "t",
-                           points_per_element: int = 50) -> ModeProfile:
-        prof = super().round_trip_profile(plane, points_per_element)
+    def round_trip_profile(self, plane: Plane = "t", points_per_element: int = 50,
+                           q_start: complex | None = None) -> ModeProfile:
+        prof = super().round_trip_profile(plane, points_per_element, q_start)
         prof.landmarks.insert(0, (0.0, "M1"))
         return prof
 
     round_trip_profile.__doc__ = _Resonator.round_trip_profile.__doc__
+
+    def launch_q(self, w: float, plane: Plane = "t") -> complex:
+        """Trial beam leaving end mirror 1 with radius ``w``.
+
+        Its wavefront matches the mirror (radius ``R1``, converging for a
+        concave mirror), as any mode of the resonator must. Used to trace a
+        round trip in an unstable resonator, which has no eigenmode.
+        """
+        _check_plane(plane)
+        return gaussian.q_from_w_R(w, -self.R1, self.wavelength)
 
     def spot_size_on_mirror(self, which: int = 1, plane: Plane = "t") -> float:
         """Mode radius on end mirror 1 or 2 [m]."""
@@ -518,6 +556,14 @@ class RingCavity(_Resonator):
 
     def _round_trip_elements(self) -> list[Element]:
         return list(self.elements)
+
+    def launch_q(self, w: float, plane: Plane = "t") -> complex:
+        """Trial beam with a waist of radius ``w`` at the start of the loop.
+
+        Used to trace a round trip in an unstable ring, which has no eigenmode.
+        """
+        _check_plane(plane)
+        return gaussian.q_from_w_R(w, np.inf, self.wavelength)
 
     @property
     def free_spectral_range(self) -> float:

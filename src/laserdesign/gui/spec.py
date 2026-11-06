@@ -311,34 +311,61 @@ def build_laser(spec: DesignSpec) -> EndPumpedLaser | SidePumpedRodLaser:
                           effective_absorption=spec.effective_absorption)
 
 
-def round_trip_mode(cavity) -> dict:
+def round_trip_mode(cavity, launch_radius: float) -> dict:
     """What the resonator step plots: the TEM00 radius over one round trip.
 
     Shared by the Qt wizard and the browser version. A standing-wave cavity
     is traced from end mirror 1 to end mirror 2 and back to mirror 1; a ring
     once around the loop (see :meth:`laserdesign.abcd._Resonator.round_trip_profile`).
 
+    In a plane where the resonator is stable the beam is the eigenmode. Where
+    it is unstable there is no eigenmode, so a trial beam of radius
+    ``launch_radius`` is launched from the reference plane
+    (:meth:`~laserdesign.abcd.StandingWaveCavity.launch_q`) and followed for
+    one round trip; its radius at the end differs from the start, which shows
+    where the paraxial elements make it run away.
+
     Returns
     -------
     dict
         ``"t"`` and ``"s"``: :class:`laserdesign.abcd.ModeProfile` for each
-        plane; ``"landmarks"``: ``[(z, label), ...]`` with the crystal shown as
-        ``"crystal"`` and labels closer than 3 % of the path merged; ``"xlabel"`` and ``"title"`` for the axis and plot.
+        plane; ``"trial"``: ``{"t": bool, "s": bool}``, True where the trial
+        beam was used; ``"landmarks"``: ``[(z, label), ...]`` for every
+        element (air gaps excepted), with the crystal shown once as
+        ``"crystal"`` and labels closer than 3 % of the path merged;
+        ``"xlabel"`` and ``"title"`` for the axis and plot.
     """
-    profiles = {plane: cavity.round_trip_profile(plane) for plane in ("t", "s")}
+    profiles, trial = {}, {}
+    for plane in ("t", "s"):
+        trial[plane] = not cavity.is_stable(plane)
+        q0 = cavity.launch_q(launch_radius, plane) if trial[plane] else None
+        profiles[plane] = cavity.round_trip_profile(plane, q_start=q0)
     # Landmarks closer than 3 % of the path share one label (e.g. M1 and a
     # crystal bonded to it), so the text does not overprint.
     span = float(profiles["t"].z[-1]) or 1.0
     landmarks: list[tuple[float, str]] = []
     for z, name in profiles["t"].landmarks:
+        if name.startswith("crystal ("):
+            continue  # crystal halves; the thermal lens marks the crystal
         name = "crystal" if name == CRYSTAL_LENS_NAME else name
         if landmarks and z - landmarks[-1][0] < 0.03 * span:
             landmarks[-1] = (landmarks[-1][0], f"{landmarks[-1][1]}, {name}")
         else:
             landmarks.append((z, name))
     standing = isinstance(cavity, abcd.StandingWaveCavity)
-    return {**profiles, "landmarks": landmarks,
+    if any(trial.values()):
+        title = "Unstable: trial-beam round trip"
+    else:
+        title = "TEM00 mode over one round trip" if standing else "TEM00 mode around the ring"
+    return {**profiles, "trial": trial, "landmarks": landmarks,
             "xlabel": ("path from mirror 1 to mirror 2 and back [mm]" if standing
                        else "position around the ring [mm]"),
-            "title": "TEM00 mode over one round trip" if standing
-            else "TEM00 mode around the ring"}
+            "title": title}
+
+
+def trial_beam_summary(trip: dict, launch_radius: float, standing: bool) -> str:
+    """One line describing the trial beam of :func:`round_trip_mode` (plain text)."""
+    start = "leaving mirror 1" if standing else "with a waist at the start of the loop"
+    ends = ", ".join(f"{trip[p].w[-1] * 1e6:.0f} µm ({p})" for p in ("t", "s") if trip["trial"][p])
+    return (f"No eigenmode: the plot follows a trial beam of {launch_radius * 1e6:.0f} µm "
+            f"(the pumped radius) {start} for one round trip; it ends at {ends}.")

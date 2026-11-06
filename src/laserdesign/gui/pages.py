@@ -32,7 +32,7 @@ from ..passive_qswitch import ABSORBERS
 from . import icons
 from .influences import tooltip_html
 from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
-                   library_location, round_trip_mode)
+                   library_location, round_trip_mode, trial_beam_summary)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
@@ -644,21 +644,29 @@ class ResonatorPage(Page):
         cav = laser.resonator(spec.pump_power)
         self.plot.clear()
         a1, a2 = self.plot.axes
-        if cav.is_stable():
-            trip = round_trip_mode(cav)
-            for plane, ls in (("t", "-"), ("s", "--")):
-                prof = trip[plane]
-                a1.plot(prof.z / MM, prof.w / UM, ls,
-                        label="tangential" if plane == "t" else "sagittal")
+        trip = round_trip_mode(cav, laser.pump_radius)
+        for plane, ls in (("t", "-"), ("s", "--")):
+            prof = trip[plane]
+            label = "tangential" if plane == "t" else "sagittal"
+            a1.plot(prof.z / MM, prof.w / UM, ls,
+                    label=label + (" (trial beam)" if trip["trial"][plane] else ""))
+        ws = np.concatenate([trip["t"].w, trip["s"].w])
+        if any(trip["trial"].values()) and ws.max() > 30 * ws.min():
+            a1.set_yscale("log")
+        else:
             a1.set_ylim(bottom=0)
-            for z, label in trip["landmarks"]:
-                a1.axvline(z / MM, c="0.6", lw=0.7, ls=":")
-                a1.text(z / MM, 0.98, label, rotation=90, ha="right", va="top", fontsize=7,
-                        color="0.35", transform=a1.get_xaxis_transform())
-            standing = isinstance(cav, StandingWaveCavity)
-            a1.set(xlabel=trip["xlabel"], ylabel="w [µm]",
-                   title=f"{trip['title']} at {spec.pump_power:.3g} W pump")
-            a1.legend(fontsize=8, loc="lower right")
+        marks = np.array([z for z, _ in trip["landmarks"]])
+        a1.plot(marks / MM, np.interp(marks, trip["t"].z, trip["t"].w) / UM, "o", ms=4,
+                c="C0", mfc="white", zorder=3)
+        for z, label in trip["landmarks"]:
+            a1.axvline(z / MM, c="0.6", lw=0.7, ls=":")
+            a1.text(z / MM, 0.98, label, rotation=90, ha="right", va="top", fontsize=7,
+                    color="0.35", transform=a1.get_xaxis_transform())
+        a1.set(xlabel=trip["xlabel"], ylabel="w [µm]",
+               title=f"{trip['title']} at {spec.pump_power:.3g} W pump")
+        a1.legend(fontsize=8, loc="lower right")
+        standing = isinstance(cav, StandingWaveCavity)
+        if cav.is_stable():
             w_l = cav.spot_size_at(CRYSTAL_LENS_NAME)
             pump_kind = "rod" if isinstance(laser, SidePumpedRodLaser) else "pump"
             text = (f"<b>Stable</b> at {spec.pump_power:.3g} W: m = "
@@ -675,10 +683,10 @@ class ResonatorPage(Page):
                         f"{nm} {cav.spot_size_at(nm) / UM:.0f} µm" for nm in named[:6]) + "<br>"
                 text += "Ring: one gain pass per round trip, repetition rate c/L.<br>"
         else:
-            a1.text(0.5, 0.5, "Unstable at full pump power", ha="center", va="center",
-                    transform=a1.transAxes, color="#b00")
-            a1.set_axis_off()
-            text = f"<span style='color:#b00'><b>Unstable</b> at {spec.pump_power:.3g} W.</span><br>"
+            text = (f"<span style='color:#b00'><b>Unstable</b> at {spec.pump_power:.3g} W: m = "
+                    f"{cav.stability_parameter('t'):.3f} (t), "
+                    f"{cav.stability_parameter('s'):.3f} (s).</span><br>"
+                    f"{trial_beam_summary(trip, laser.pump_radius, standing)}<br>")
         if stable_p:
             text += f"Stable pump range in the plot: {min(stable_p):.3g} to {max(stable_p):.3g} W<br>"
         text += (f"Optical length {cav.optical_length / MM:.1f} mm, FSR "

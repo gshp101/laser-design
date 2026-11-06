@@ -81,9 +81,17 @@ The upper plot shows the TEM00 beam radius over one full round trip at full
 pump power, in both planes (they differ only with off-axis curved mirrors or
 Brewster plates). For a standing-wave resonator the trace starts on end
 mirror 1, runs to end mirror 2 and comes back to mirror 1, so it is
-symmetric about M2; for a ring it goes once around the loop. Dotted lines
-mark the mirrors (M1, M2 and fold mirrors by name), the crystal and any other
-named thin element. The lower plot shows the stability parameter as the pump power, and
+symmetric about M2; for a ring it goes once around the loop. Every element
+(the mirrors, the crystal, lenses, media and Brewster plates; not air gaps)
+is marked with a dotted line, its name and a circle on the tangential trace.
+
+When the resonator is unstable there is no eigenmode, so the plot follows a
+trial beam for a single round trip instead: a beam with the pumped radius
+leaving mirror 1 with its wavefront matched to that mirror (for a ring, a
+waist at the start of the loop). Its radius at the end differs from the
+start, and the trace shows which paraxial element makes it run away, which
+helps when deciding what to change to restore stability. The y axis turns
+logarithmic when the beam grows by more than a factor of 30. The lower plot shows the stability parameter as the pump power, and
 so the thermal lens, changes. The shaded band is the stable zone, and the
 dotted line marks your operating point. The summary gives the mode-to-pump
 size ratio in the crystal (aim for about 0.8 to 1 for TEM00 with good
