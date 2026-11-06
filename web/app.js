@@ -439,6 +439,45 @@ function resultsInputs() {
   return [h("table", { class: "rows" }, resultRows)];
 }
 
+// A row of the results table; `tip` (from laserdesign.gui.influences) lists
+// the inputs that set the quantity and shows on hover, focus or tap.
+let tipCount = 0;
+function resultRow(label, value, tip) {
+  if (!tip) return h("tr", {}, h("td", {}, label), h("td", {}, value));
+  const body = h("tbody");
+  let stepName = null;
+  for (const inp of tip.inputs) {
+    if (inp.step !== stepName) {
+      stepName = inp.step;
+      body.append(h("tr", { class: "tip-step" }, h("td", { colspan: "2" }, stepName)));
+    }
+    body.append(h("tr", {}, h("td", {}, inp.name), h("td", {}, inp.value)));
+  }
+  const id = `tip-${++tipCount}`;
+  const pop = h("div", { class: "result-tip", role: "tooltip", id },
+    h("p", {}, tip.summary), h("table", {}, body));
+  const row = h("tr", { class: "has-tip", tabindex: "0", "aria-describedby": id },
+    h("td", {}, label, pop), h("td", {}, value));
+  // Open upwards when there is no room below the row.
+  const place = () => {
+    pop.classList.remove("up");
+    pop.style.display = "block";
+    const below = window.innerHeight - row.getBoundingClientRect().bottom;
+    const up = pop.offsetHeight + 8 > below && row.getBoundingClientRect().top > below;
+    pop.style.display = "";
+    pop.classList.toggle("up", up);
+  };
+  row.addEventListener("mouseenter", place);
+  row.addEventListener("focus", place);
+  row.addEventListener("click", () => {
+    place();
+    const open = row.classList.contains("open");
+    resultRows.querySelectorAll("tr.open").forEach((r) => r.classList.remove("open"));
+    row.classList.toggle("open", !open);
+  });
+  return row;
+}
+
 // ---------------------------------------------------------------------- //
 // Steps
 // ---------------------------------------------------------------------- //
@@ -452,7 +491,7 @@ const STEPS = [
   { key: "operation", title: "4. Operation", icon: "step-operation", inputs: operationInputs,
     help: "Choose the output coupling, the other losses and how the laser is run: continuous wave, actively Q-switched with CW pumping, passively Q-switched with a saturable absorber, SESAM mode-locked, or Kerr-lens mode-locked." },
   { key: "results", title: "5. Results", icon: "step-results", inputs: resultsInputs,
-    help: "Performance of the design. Go back to any step to change it; results update." },
+    help: "Performance of the design. Rest the pointer on a row (or tap it) to see what sets it. Go back to any step to change it; results update." },
 ];
 
 function renderNav() {
@@ -528,7 +567,7 @@ function show(rep) {
   if (rep.error && !rep.info.length) notes.unshift(h("div", { class: "note warn error" }, rep.error));
   $("notes").replaceChildren(...notes);
   if (resultRows && STEPS[step].key === "results") {
-    resultRows.replaceChildren(...rep.rows.map(([k, v]) => h("tr", {}, h("td", {}, k), h("td", {}, v))));
+    resultRows.replaceChildren(...rep.rows.map(([k, v], i) => resultRow(k, v, (rep.tips || [])[i])));
   }
   drawPlots(rep.plots);
   if (rep.problems && rep.problems.length) status(rep.problems.join("; "), true);

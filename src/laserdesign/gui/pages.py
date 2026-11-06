@@ -29,6 +29,7 @@ from ..design import SidePumpedRodLaser
 from ..materials import MATERIALS, get_material
 from ..passive_qswitch import ABSORBERS
 from . import icons
+from .influences import tooltip_html
 from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
                    library_location, round_trip_mode)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
@@ -902,7 +903,8 @@ class OperationPage(Page):
 class ResultsPage(Page):
     title = "5. Results"
     icon_name = "step-results"
-    help_text = "Performance of the design. Go back to any step to change it; results update."
+    help_text = ("Performance of the design. Rest the pointer on a row to see what sets it. "
+                 "Go back to any step to change it; results update.")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -936,13 +938,17 @@ class ResultsPage(Page):
     def store(self, spec: DesignSpec) -> None:
         pass
 
-    def _set_rows(self, rows) -> None:
+    def _set_rows(self, rows, spec: DesignSpec | None = None) -> None:
         self.rows = rows
         self.table.setRowCount(len(rows))
         for r, (k, v) in enumerate(rows):
-            self.table.setItem(r, 0, QTableWidgetItem(k))
+            tip = tooltip_html(k, spec) if spec is not None else ""
+            name = QTableWidgetItem(k)
             item = QTableWidgetItem(v)
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            for cell in (name, item):
+                cell.setToolTip(tip)
+            self.table.setItem(r, 0, name)
             self.table.setItem(r, 1, item)
 
     def refresh(self, spec: DesignSpec) -> None:
@@ -1070,7 +1076,7 @@ class ResultsPage(Page):
                          "damage or multiple pulsing. Enlarge the mode on the SESAM.</span>")
             elif c.absorber_saturation < 3:
                 notes = "The SESAM is only weakly saturated; mode-locking may not self-start."
-        self._set_rows(rows)
+        self._set_rows(rows, spec)
         self.notes.setText(notes + "<br><i>Results come from idealised models; see the theory "
                            "pages for their assumptions.</i>")
         self.plot.draw_idle()

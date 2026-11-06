@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Results step, desktop and browser: hovering over a row shows how the
+  quantity is found and the principal inputs that set it, grouped by wizard
+  step with their current values. The dependencies are written once, in the
+  new Qt-free module `laserdesign.gui.influences`, and follow the design (end
+  or side pumping, standing-wave or ring resonator, operating mode). The
+  browser report gains a `tips` list alongside `rows`.
 - Beam radius over one round trip on the resonator step of the Qt wizard and
   the web version: a standing-wave resonator is traced from end mirror 1 to
   end mirror 2 and back to mirror 1, a ring once around the loop, with the

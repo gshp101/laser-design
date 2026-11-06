@@ -5,3 +5,6 @@
 
 ```{automodule} laserdesign.gui.presets
 ```
+
+```{automodule} laserdesign.gui.influences
+```

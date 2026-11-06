@@ -50,6 +50,17 @@ def test_presets_reach_results(window, app, name):
         assert rows["Resonator type"].startswith("ring")
 
 
+def test_results_rows_have_tooltips(window, app):
+    walk(window, app)
+    table = window.pages[-1].table
+    labels = [table.item(r, 0).text() for r in range(table.rowCount())]
+    r = labels.index("CW output power")
+    for col in (0, 1):
+        tip = table.item(r, col).toolTip()
+        assert "Output coupler transmission" in tip and "Pump power" in tip
+    assert table.item(labels.index("Design"), 0).toolTip() == ""
+
+
 def test_editing_a_page_updates_spec(window, app):
     page = window.pages[1]
     window.go(1)
