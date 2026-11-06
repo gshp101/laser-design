@@ -89,7 +89,10 @@ print(f"FSR: {cav.free_spectral_range / 1e9:.2f} GHz")
 ```
 
 Plot the mode through the cavity and the stability parameter versus pump
-power to see how much margin the design has:
+power to see how much margin the design has. `mode_profile()` samples one
+pass from mirror 1 to mirror 2; `round_trip_profile()` samples the full
+round trip (mirror 1 to mirror 2 and back, or once around a ring) and lists
+the mirror positions in `landmarks`:
 
 ```python
 import matplotlib.pyplot as plt
