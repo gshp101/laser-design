@@ -311,6 +311,27 @@ def build_laser(spec: DesignSpec) -> EndPumpedLaser | SidePumpedRodLaser:
                           effective_absorption=spec.effective_absorption)
 
 
+PARAXIAL_STABILITY = "Paraxial stability (A+D)/2"
+
+
+def paraxial_stability(laser, pump_power: float) -> tuple[float, float]:
+    """``m = (A+D)/2`` of the round-trip matrix in the t and s planes.
+
+    Includes the thermal lens at ``pump_power``. The resonator is stable
+    when ``-1 < m < 1`` in both planes; unlike the rest of the Results, this
+    is defined whether or not it is.
+    """
+    cav = laser.resonator(pump_power)
+    return cav.stability_parameter("t"), cav.stability_parameter("s")
+
+
+def paraxial_stability_text(m_t: float, m_s: float) -> str:
+    """The Results value: one number when the planes agree, else ``t / s``."""
+    text = (f"{m_t:.3f}" if abs(m_t - m_s) < 5e-4
+            else f"{m_t:.3f} / {m_s:.3f} (t / s)")
+    return text + ("" if abs(m_t) < 1 and abs(m_s) < 1 else ", unstable")
+
+
 def round_trip_mode(cavity, launch_radius: float) -> dict:
     """What the resonator step plots: the TEM00 radius over one round trip.
 

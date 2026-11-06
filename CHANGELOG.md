@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Results step: new row **Paraxial stability (A+D)/2**, in the t and s
+  planes (replacing "Stability parameter m", which gave the t plane only).
+  It is shown, with the pump, heat load and thermal lens, even when the
+  resonator is unstable, where the Results step used to show nothing. Its
+  hover note lists the resonator elements, the crystal and the thermal-lens
+  inputs, and it can be plotted against any of them, with the stable band
+  shaded and no gaps where the resonator is unstable. Fold-mirror angles and
+  Brewster plate thicknesses can now be swept too.
 - Results step, desktop and browser: plot any numeric result against one
   of the inputs that set it (the inputs in its hover note). Pick the
   result and the input, edit the range if you like, and the input is swept

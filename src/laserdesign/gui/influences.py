@@ -195,8 +195,12 @@ _RULES: dict[str, tuple[str, list[str]]] = {
     "Heat load": ("Absorbed pump times the heat fraction.", ["absorbed", "heat_fraction"]),
     "Thermal focal length": ("Set by the heat load, the pumped radius and the crystal's "
                              "thermal and thermo-optic properties.", ["thermal"]),
-    "Stability parameter m": ("m = (A+D)/2 of the round trip including the thermal lens.",
-                              ["cavity", "thermal"]),
+    "Paraxial stability (A+D)/2": ("m = (A+D)/2 of the round-trip ABCD matrix in each "
+                                   "plane, with the crystal and its thermal lens at this "
+                                   "pump power; stable for −1 < m < 1. Every resonator "
+                                   "element enters; fold angles split t from s.",
+                                   ["cavity_type", "cavity", "crystal_length",
+                                    "refractive_index", "crystal_brewster", "thermal"]),
     "Resonator type": ("An input, set in step 3.", ["cavity_type"]),
     "Laser / pump radius in crystal": ("The TEM00 mode follows from the resonator and the "
                                        "thermal lens; the pump radius from the pump optics.",

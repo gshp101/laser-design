@@ -78,16 +78,16 @@ def test_sweep_leaves_the_design_alone():
 
 def test_air_gaps_and_material_properties_are_inputs():
     spec = DesignSpec()
-    keys = [i.key for i in sweep_inputs("Stability parameter m", spec)]
+    keys = [i.key for i in sweep_inputs("Paraxial stability (A+D)/2", spec)]
     assert "elements:1" in keys  # the air gap
     assert "R2" in keys and "R1" not in keys  # mirror 1 is flat
     assert "thermal_conductivity" in keys
-    d = sweep("Stability parameter m", "elements:1", spec, 10, 300, points=30, refine=False)
+    d = sweep("CW output power", "elements:1", spec, 10, 300, points=30, refine=False)
     assert d["xlabel"] == "Air gap [mm]"
     # A long gap with a 200 mm mirror goes unstable: those points have no result.
     assert 0 < d["unstable"] < 30 and d["refined"] is None
     # When most of the range has no result, the part that has one is resolved.
-    d = sweep("Stability parameter m", "elements:1", spec, 10, 2000, points=20)
+    d = sweep("CW output power", "elements:1", spec, 10, 2000, points=20)
     assert d["refined"] is not None and len(d["x"]) > 20
     assert d["x"] == sorted(d["x"]) and d["lo"] == 10 and d["hi"] == 2000
     d = sweep("Thermal focal length", "thermal_conductivity", spec, points=5)
@@ -129,3 +129,36 @@ def test_web_plot_and_api():
                                json.dumps({"label": "CW threshold", "key": "nope"})))
     assert "error" in err
     assert math.isfinite(out["series"][0]["y"][0])
+
+
+def test_paraxial_stability_is_defined_when_unstable():
+    spec = DesignSpec()
+    d = sweep("Paraxial stability (A+D)/2", "elements:1", spec, 10, 2000, points=20)
+    assert d["unstable"] == 0 and d["refined"] is None and d["band"] == (-1.0, 1.0)
+    assert [s["label"] for s in d["series"]] == ["t", "s"]
+    m = d["series"][0]["y"]
+    assert min(m) < -1 < max(m)  # crosses out of the stable range, and is still plotted
+    # A tilted fold mirror separates the planes.
+    spec = DesignSpec(elements=[{"type": "crystal"}, {"type": "space", "length": 0.05},
+                                {"type": "mirror", "R": 0.1, "angle_deg": 0.0},
+                                {"type": "space", "length": 0.05}])
+    keys = [i.key for i in sweep_inputs("Paraxial stability (A+D)/2", spec)]
+    assert "elements:2" in keys and "elements:2:angle_deg" in keys
+    d = sweep("Paraxial stability (A+D)/2", "elements:2:angle_deg", spec, 0, 20, points=5)
+    assert d["xlabel"] == "Fold mirror angle [°]"
+    t, s = (np.array(x["y"]) for x in d["series"])
+    assert t[0] == pytest.approx(s[0]) and abs(t[-1] - s[-1]) > 1e-3
+
+
+def test_unstable_design_still_reports_paraxial_stability():
+    spec = DesignSpec(elements=[{"type": "crystal"}, {"type": "space", "length": 2.0}])
+    out = results(spec)
+    rows = dict(out["rows"])
+    assert rows["Paraxial stability (A+D)/2"].endswith("unstable")
+    assert "CW output power" not in rows
+    i = [k for k, _ in out["rows"]].index("Paraxial stability (A+D)/2")
+    assert out["tips"][i] and out["sweeps"][i]
+    assert any("unstable" in n["text"] for n in out["notes"])
+    assert evaluate("Paraxial stability (A+D)/2", spec)[0] > 1
+    assert math.isfinite(evaluate("Thermal focal length", spec)[0])
+    assert math.isnan(evaluate("CW threshold", spec)[0])

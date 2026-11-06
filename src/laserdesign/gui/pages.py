@@ -34,8 +34,9 @@ from ..passive_qswitch import ABSORBERS
 from . import icons
 from .influences import tooltip_html
 from .sweep import sweep, sweep_inputs
-from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
-                   library_location, round_trip_mode, trial_beam_summary)
+from .spec import (CRYSTAL_LENS_NAME, PARAXIAL_STABILITY, DesignSpec, absorber, build_laser,
+                   kerr_model, library_location, paraxial_stability, paraxial_stability_text,
+                   round_trip_mode, trial_beam_summary)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
@@ -1034,7 +1035,10 @@ class ResultsPage(Page):
         self.sweep_quantity.clear()
         self.sweep_quantity.addItems(list(self._inputs))
         idx = self.sweep_quantity.findText(old)
-        self.sweep_quantity.setCurrentIndex(max(idx, 0))
+        # With no earlier choice, start on the paraxial stability: the one result an
+        # unstable design has that tells you how to fix it.
+        self.sweep_quantity.setCurrentIndex(
+            idx if idx >= 0 else max(self.sweep_quantity.findText(PARAXIAL_STABILITY), 0))
         self.sweep_quantity.blockSignals(False)
         self._quantity_changed(keep_range=idx >= 0)
         has = bool(self._inputs)
@@ -1105,6 +1109,9 @@ class ResultsPage(Page):
             if np.isfinite(y0):
                 ax.plot([d["current"]], [y0], "o", mfc="none", color=f"C{i}")
         ax.axvline(d["current"], c="k", ls=":", lw=0.8)
+        if d.get("band"):
+            ax.axhspan(*d["band"], color="0.9", zorder=0, label="stable")
+            many = True
         ax.set(xlabel=d["xlabel"], ylabel=d["ylabel"], title=d["title"])
         if d["xlog"]:
             ax.set_xscale("log")
@@ -1149,23 +1156,31 @@ class ResultsPage(Page):
             return
         p = spec.pump_power
         op = laser.analyze(p)
-        if not op.stable:
-            self._set_rows([("Resonator", "unstable at this pump power")])
-            self._spec = spec
-            self._update_sweep_choices(spec)
-            self.plot.message("The resonator is unstable at the chosen pump power.\n"
-                              "Go back to step 3 to change it.")
-            self.notes.setText("")
-            return
         rows = [
             ("Design", spec.name),
             ("Pump power", f"{p:.3g} W"),
             ("Absorbed power", f"{op.absorbed_power:.3g} W"),
             ("Heat load", f"{op.heat_power:.3g} W"),
             ("Thermal focal length", f"{op.thermal_focal_length / MM:.0f} mm"),
-            ("Stability parameter m", f"{op.stability_parameter:.3f}"),
+            (PARAXIAL_STABILITY, paraxial_stability_text(*paraxial_stability(laser, p))),
             ("Resonator type", "ring (1 gain pass)" if op.gain_passes == 1
              else "standing wave (2 gain passes)"),
+        ]
+        if not op.stable:
+            # Only what the resonator geometry and the thermal lens give is defined.
+            self._set_rows(rows, spec)
+            self._spec = spec
+            self._update_sweep_choices(spec)
+            self.plot.message("The resonator is unstable at the chosen pump power.\n"
+                              "Go back to step 3 to change it.")
+            self.notes.setText("<span style='color:#b00'>The resonator is unstable at this "
+                               "pump power (|(A+D)/2| ≥ 1), so there is no laser mode and no "
+                               "other result. Plot the paraxial stability against an input "
+                               "below to find a stable design, or go back to step 3.</span>")
+            if self._swept and self._current_input() is not None:
+                self.run_sweep(show=False)
+            return
+        rows += [
             ("Laser / pump radius in crystal",
              f"{op.laser_radius / UM:.0f} / {op.pump_radius / UM:.0f} µm"
              + (" (multimode flat-top / rod)" if op.laser_profile == "tophat" else "")),

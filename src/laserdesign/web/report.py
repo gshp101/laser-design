@@ -48,9 +48,12 @@ from ..gui.influences import influences
 from ..gui.sweep import sweep, sweep_inputs
 from ..gui.spec import (
     CRYSTAL_LENS_NAME,
+    PARAXIAL_STABILITY,
     DesignSpec,
     absorber,
     build_laser,
+    paraxial_stability,
+    paraxial_stability_text,
     kerr_model,
     library_location,
     round_trip_mode,
@@ -340,19 +343,28 @@ def results(spec: DesignSpec) -> dict:
         return error
     p = spec.pump_power
     op = laser.analyze(p)
-    if not op.stable:
-        return _report(rows=[["Resonator", "unstable at this pump power"]],
-                       plots=[message_plot("The resonator is unstable at the chosen pump "
-                                           "power. Go back to step 3 to change it.")])
     rows = [
         ["Design", spec.name],
         ["Pump power", f"{p:.3g} W"],
         ["Absorbed power", f"{op.absorbed_power:.3g} W"],
         ["Heat load", f"{op.heat_power:.3g} W"],
         ["Thermal focal length", f"{op.thermal_focal_length / MM:.0f} mm"],
-        ["Stability parameter m", f"{op.stability_parameter:.3f}"],
+        [PARAXIAL_STABILITY, paraxial_stability_text(*paraxial_stability(laser, p))],
         ["Resonator type", "ring (1 gain pass)" if op.gain_passes == 1
          else "standing wave (2 gain passes)"],
+    ]
+    if not op.stable:
+        # Only what the resonator geometry and the thermal lens give is defined.
+        return _report(rows=rows, tips=[influences(label, spec) for label, _ in rows],
+                       sweeps=[[i.to_dict(spec) for i in sweep_inputs(label, spec)]
+                               for label, _ in rows],
+                       notes=[{"level": "warn", "text": "The resonator is unstable at this pump "
+                               "power (|(A+D)/2| ≥ 1), so there is no laser mode and no other "
+                               "result. Plot the paraxial stability against an input below to "
+                               "find a stable design, or go back to step 3."}],
+                       plots=[message_plot("The resonator is unstable at the chosen pump "
+                                           "power. Go back to step 3 to change it.")])
+    rows += [
         ["Laser / pump radius in crystal",
          f"{op.laser_radius / UM:.0f} / {op.pump_radius / UM:.0f} µm"
          + (" (multimode flat-top / rod)" if op.laser_profile == "tophat" else "")],
@@ -407,7 +419,8 @@ def sweep_plot(spec: DesignSpec, label: str, key: str, lo: float | None = None,
     lines += [series([d["current"]], [y], markers=True, color=i, line=False)
               for i, y in enumerate(d["current_y"]) if math.isfinite(y)]
     out = plot(d["title"], d["xlabel"], d["ylabel"], *lines, xlog=d["xlog"],
-               vlines=[(d["current"], "this design")])
+               vlines=[(d["current"], "this design")], hspan=d["band"],
+               hlines=[hline(y) for y in (d["band"] or ())])
     if d["unstable"] == len(d["x"]):
         out["message"] = "No result anywhere in this range (the resonator is unstable or " \
                          "the design is invalid)."

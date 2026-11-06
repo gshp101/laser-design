@@ -127,7 +127,16 @@ def test_flat_mirror_and_unstable_message(window, app):
     window.refresh()
     window.go(4)
     app.processEvents()
-    assert dict(window.pages[4].rows)["Resonator"] == "unstable at this pump power"
+    page = window.pages[4]
+    rows = dict(page.rows)
+    assert rows["Paraxial stability (A+D)/2"].endswith(", unstable")
+    assert "CW output power" not in rows
+    assert "unstable" in page.notes.text()
+    # It can still be plotted, through the unstable range.
+    assert page.sweep_quantity.currentText() == "Paraxial stability (A+D)/2"
+    page.sweep_points.setValue(5)
+    page.run_sweep()
+    assert len(page.sweep_plot.axes[0].lines[0].get_xdata()) == 5
 
 
 def test_save_and_open(window, app, tmp_path):

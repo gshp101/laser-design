@@ -32,7 +32,8 @@ import numpy as np
 
 from .. import modelocking
 from .influences import influences
-from .spec import DesignSpec, absorber, build_laser, kerr_model, library_location
+from .spec import (DesignSpec, absorber, build_laser, kerr_model, library_location,
+                   paraxial_stability)
 
 UM, MM = 1e-6, 1e-3
 DEFAULT_POINTS = 25
@@ -161,29 +162,44 @@ def _element_name(spec: DesignSpec, i: int, kind: str) -> str:
 
 
 def _elements(spec: DesignSpec) -> list[SweepInput]:
-    """Air gaps, fold-mirror radii and lens focal lengths in the resonator."""
+    """Air gaps, fold-mirror radii and angles, lenses and plates in the resonator."""
     out = []
     for i, e in enumerate(spec.elements):
-        t = e.get("type")
-        field_, kind = {"space": ("length", "Air gap"), "mirror": ("R", "Fold mirror radius"),
-                        "lens": ("f", "Lens focal length"),
-                        "medium": ("length", "Medium length")}.get(t, (None, None))
-        if field_ is None:
-            continue
-        x = float(e.get(field_, math.inf))
-        if not math.isfinite(x) or x == 0:
-            continue
+        for field_, kind, unit, scale in _ELEMENT_FIELDS.get(e.get("type"), ()):
+            x = float(e.get(field_, 0.0 if field_ == "angle_deg" else math.inf))
+            if field_ == "angle_deg":
+                lo, hi, bounds = 0.0, max(2 * x, 10.0), (0.0, 89.0)
+            elif not math.isfinite(x) or x == 0:
+                continue  # flat mirror or no lens: no radius to sweep
+            elif field_ in ("length", "thickness"):
+                lo, hi, bounds = x * 0.25, x * 2.0, (0.0, None)
+            else:
+                (lo, hi), bounds = _range(x, 0.8, 1.25), (None, None)
 
-        def get(s, i=i, f=field_):
-            return float(s.elements[i][f])
+            def get(s, i=i, f=field_):
+                return float(s.elements[i].get(f, 0.0))
 
-        def set_(s, v, i=i, f=field_):
-            s.elements[i] = {**s.elements[i], f: v}
-        lo, hi = _range(x, 0.8, 1.25) if field_ != "length" else (x * 0.25, x * 2.0)
-        bounds = (0.0, None) if field_ == "length" else (None, None)
-        out.append(SweepInput(f"elements:{i}", _element_name(spec, i, kind), "mm", MM,
-                              get, set_, lo, hi, bounds))
+            def set_(s, v, i=i, f=field_):
+                s.elements[i] = {**s.elements[i], f: v}
+            # The first field keeps the plain key so saved choices stay valid.
+            key = f"elements:{i}" if field_ == _ELEMENT_FIELDS[e["type"]][0][0] \
+                else f"elements:{i}:{field_}"
+            inp = SweepInput(key, _element_name(spec, i, kind), unit, scale, get, set_,
+                             lo, hi, bounds)
+            inp.lo, inp.hi = inp.clip(lo), inp.clip(hi)
+            out.append(inp)
     return out
+
+
+#: Swept fields of each resonator element: (field, name, unit, display scale).
+_ELEMENT_FIELDS = {
+    "space": [("length", "Air gap", "mm", MM)],
+    "mirror": [("R", "Fold mirror radius", "mm", MM),
+               ("angle_deg", "Fold mirror angle", "°", 1.0)],
+    "lens": [("f", "Lens focal length", "mm", MM)],
+    "medium": [("length", "Medium length", "mm", MM)],
+    "brewster": [("thickness", "Brewster plate thickness", "mm", MM)],
+}
 
 
 def _mirror(key: str, name: str):
@@ -325,9 +341,12 @@ class _Point:
         self.spec = spec
         self.laser = build_laser(spec)
         self.op = self.laser.analyze(spec.pump_power)
-        if not self.op.stable:
-            raise ValueError("unstable")
         self._cache: dict = {}
+
+    @property
+    def paraxial(self) -> tuple[float, float]:
+        return self._get("paraxial",
+                         lambda: paraxial_stability(self.laser, self.spec.pump_power))
 
     def _get(self, key, make):
         if key not in self._cache:
@@ -397,6 +416,10 @@ class Quantity:
 
     ylabel: str
     series: list[tuple[str, Callable[[_Point], float]]]
+    #: False for rows that exist for an unstable resonator too.
+    needs_stable: bool = True
+    #: A y range to shade, e.g. the stable range -1 < m < 1.
+    band: tuple[float, float] | None = None
 
 
 def _q(ylabel, fn, name=""):
@@ -407,11 +430,17 @@ FS2 = 1e-30
 
 #: Results rows that can be plotted, keyed like the influence rules.
 QUANTITIES: dict[str, Quantity] = {
-    "Absorbed power": _q("absorbed power [W]", lambda p: p.op.absorbed_power),
-    "Heat load": _q("heat load [W]", lambda p: p.op.heat_power),
-    "Thermal focal length": _q("thermal focal length [mm]",
-                               lambda p: p.op.thermal_focal_length / MM),
-    "Stability parameter m": _q("m = (A+D)/2", lambda p: p.op.stability_parameter),
+    # Defined whether or not the resonator is stable (shown for an unstable one too).
+    "Absorbed power": Quantity("absorbed power [W]", [("", lambda p: p.op.absorbed_power)],
+                               needs_stable=False),
+    "Heat load": Quantity("heat load [W]", [("", lambda p: p.op.heat_power)],
+                          needs_stable=False),
+    "Thermal focal length": Quantity("thermal focal length [mm]",
+                                     [("", lambda p: p.op.thermal_focal_length / MM)],
+                                     needs_stable=False),
+    "Paraxial stability (A+D)/2": Quantity("m = (A+D)/2", [
+        ("t", lambda p: p.paraxial[0]), ("s", lambda p: p.paraxial[1])], needs_stable=False,
+        band=(-1.0, 1.0)),
     "Laser / pump radius in crystal": Quantity("radius in crystal [µm]", [
         ("laser", lambda p: p.op.laser_radius / UM),
         ("pump", lambda p: p.op.pump_radius / UM)]),
@@ -501,7 +530,9 @@ def evaluate(label: str, spec: DesignSpec) -> list[float]:
         raise KeyError(f"{label!r} has no numeric quantity")
     try:
         point = _Point(spec)
-    except Exception:  # invalid or unstable design at this input value
+    except Exception:  # invalid design at this input value
+        return [math.nan] * len(q.series)
+    if q.needs_stable and not point.op.stable:
         return [math.nan] * len(q.series)
     out = []
     for _, fn in q.series:
@@ -530,8 +561,9 @@ def sweep(label: str, key: str, spec: DesignSpec, lo: float | None = None,
         ``{"title", "xlabel", "ylabel", "x": [...], "series": [{"label", "y"}],
         "current": x of the current design, "current_y": [...], "xlog": bool,
         "lo", "hi": the range swept, "unstable": number of points with no
-        result, "refined": [lo, hi] of the second pass or None}``, x in
-        display units.
+        result, "refined": [lo, hi] of the second pass or None, "band": a y
+        range to shade (the stable range of the paraxial stability) or None}``,
+        x in display units.
     """
     inp = find_input(label, key, spec)
     q = quantity(label, spec)
@@ -579,4 +611,4 @@ def sweep(label: str, key: str, spec: DesignSpec, lo: float | None = None,
                        for i, (name, _) in enumerate(q.series)],
             "current": inp.get(spec) / inp.scale, "current_y": evaluate(label, spec),
             "xlog": bool(log), "lo": lo_si / inp.scale, "hi": hi_si / inp.scale,
-            "unstable": bad, "refined": refined}
+            "unstable": bad, "refined": refined, "band": q.band}
