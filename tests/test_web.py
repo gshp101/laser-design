@@ -49,6 +49,23 @@ def test_results_match_library():
     assert rows["Pulse energy"] == f"{qs['energy'] * 1e3:.3g} mJ"
 
 
+@pytest.mark.parametrize("name", ["CW Nd:YVO4 (30 W pump)", "Ring Nd:YVO4 (unidirectional bow-tie)"])
+def test_resonator_plots_one_round_trip(name):
+    spec = presets.PRESETS[name]()
+    cav = build_laser(spec).resonator(spec.pump_power)
+    mode = _run(spec, "resonator")["plots"][0]
+    x = mode["series"][0]["x"]
+    labels = [v["label"] for v in mode["vlines"]]
+    assert any("crystal" in label for label in labels)
+    if spec.cavity_type == "standing":
+        assert x[-1] == pytest.approx(2 * cav.physical_length * 1e3)
+        assert labels[0].startswith("M1") and labels[-1].endswith("M1") and "M2" in labels
+    else:
+        assert x[-1] == pytest.approx(cav.physical_length * 1e3)
+    w = mode["series"][0]["y"]
+    assert w[0] == pytest.approx(w[-1])
+
+
 def test_unstable_resonator_is_reported():
     spec = presets.cw_nd_yvo4()
     spec.elements = [{"type": "crystal"}, {"type": "space", "length": 2.0}]

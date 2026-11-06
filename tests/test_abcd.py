@@ -89,6 +89,32 @@ def test_mode_profile_endpoints():
     assert prof.z[-1] == pytest.approx(0.3)
 
 
+def test_round_trip_profile_standing_wave():
+    cav = abcd.StandingWaveCavity([abcd.FreeSpace(0.1), abcd.ThinLens(0.4, name="lens"),
+                                   abcd.FreeSpace(0.2)], R1=np.inf, R2=0.5, wavelength=LAM)
+    prof = cav.round_trip_profile()
+    one = cav.mode_profile()
+    # M1 -> M2 -> M1: twice the length, closes on itself, mirror symmetric about M2.
+    assert prof.z[-1] == pytest.approx(0.6)
+    assert prof.w[0] == pytest.approx(prof.w[-1])
+    assert prof.w[0] == pytest.approx(cav.spot_size_on_mirror(1))
+    assert np.interp(0.3, prof.z, prof.w) == pytest.approx(cav.spot_size_on_mirror(2))
+    assert np.interp(0.45, prof.z, prof.w) == pytest.approx(np.interp(0.15, one.z, one.w))
+    assert prof.landmarks == [(0.0, "M1"), (pytest.approx(0.1), "lens"), (pytest.approx(0.3), "M2"),
+                              (pytest.approx(0.5), "lens"), (pytest.approx(0.6), "M1")]
+
+
+def test_round_trip_profile_ring_is_one_loop():
+    f, d = 0.5, 0.6
+    ring = abcd.RingCavity([abcd.FreeSpace(d), abcd.CurvedMirror(2 * f, name="A"),
+                            abcd.FreeSpace(d), abcd.CurvedMirror(2 * f)], wavelength=LAM)
+    prof = ring.round_trip_profile()
+    assert prof.z[-1] == pytest.approx(2 * d)
+    assert prof.w[0] == pytest.approx(prof.w[-1])
+    assert np.allclose(prof.w, ring.mode_profile().w)
+    assert [label for _, label in prof.landmarks] == ["A", "mirror"]
+
+
 def test_thermal_lens_crystal_helper():
     els = abcd.crystal_with_thermal_lens(0.01, 1.82, 0.2, name="YAG")
     assert [e.name for e in els][1] == "YAG thermal lens"

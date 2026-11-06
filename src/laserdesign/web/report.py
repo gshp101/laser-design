@@ -21,7 +21,7 @@ and a plot is::
      "series": [{"x": [...], "y": [...], "label": str, "dash": "solid" | "dash" | "dot",
                  "axis": "y" | "y2", "markers": bool, "color": int | None}],
      "hlines": [{"y": float, "axis": "y" | "y2", "dash": str, "label": str}],
-     "vlines": [{"x": float}], "hspan": [lo, hi] | None, "message": str | None}
+     "vlines": [{"x": float, "label": str}], "hspan": [lo, hi] | None, "message": str | None}
 
 The physics and wording follow the Qt wizard in :mod:`laserdesign.gui.pages`.
 """
@@ -43,6 +43,7 @@ from ..gui.spec import (
     build_laser,
     kerr_model,
     library_location,
+    round_trip_mode,
 )
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
@@ -93,8 +94,14 @@ def plot(title: str, xlabel: str, ylabel: str, *series_, y2label: str | None = N
     return {"title": title, "xlabel": xlabel, "ylabel": ylabel, "y2label": y2label,
             "xlog": xlog, "ylog": ylog, "ylim": list(ylim) if ylim is not None else None,
             "series": list(series_), "hlines": list(hlines),
-            "vlines": [{"x": float(v)} for v in vlines],
+            "vlines": [_vline(v) for v in vlines],
             "hspan": list(hspan) if hspan is not None else None, "message": message}
+
+
+def _vline(v) -> dict:
+    """``x`` or ``(x, label)`` -> ``{"x": x, "label": label}``."""
+    x, label = v if isinstance(v, (tuple, list)) else (v, "")
+    return {"x": float(x), "label": str(label)}
 
 
 def hline(y: float, axis: str = "y", dash: str = "dot", label: str = "") -> dict:
@@ -228,13 +235,15 @@ def resonator(spec: DesignSpec) -> dict:
     info, plots = [], []
     standing = isinstance(cav, StandingWaveCavity)
     if cav.is_stable():
-        mode = [series(prof.z / MM, prof.w / UM,
+        trip = round_trip_mode(cav)
+        mode = [series(trip[plane].z / MM, trip[plane].w / UM,
                        "tangential" if plane == "t" else "sagittal",
                        "solid" if plane == "t" else "dash")
-                for plane in ("t", "s") for prof in [cav.mode_profile(plane)]]
-        plots.append(plot(f"TEM00 mode at {spec.pump_power:.3g} W pump",
-                          "distance from mirror 1 [mm]" if standing
-                          else "position around the ring [mm]", "w [µm]", *mode))
+                for plane in ("t", "s")]
+        top = max(float(trip[p].w.max()) for p in ("t", "s")) / UM
+        plots.append(plot(f"{trip['title']} at {spec.pump_power:.3g} W pump",
+                          trip["xlabel"], "w [µm]", *mode, ylim=(0, 1.08 * top),
+                          vlines=[(z / MM, label) for z, label in trip["landmarks"]]))
         w_l = cav.spot_size_at(CRYSTAL_LENS_NAME)
         pump_kind = "rod" if isinstance(laser, SidePumpedRodLaser) else "pump"
         info.append(f"<b>Stable</b> at {spec.pump_power:.3g} W: m = "

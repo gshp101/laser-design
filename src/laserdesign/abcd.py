@@ -296,11 +296,15 @@ class ModeProfile:
         1/e^2 intensity radius [m].
     element_starts : list of float
         Position at which each element begins.
+    landmarks : list of (float, str)
+        Positions of mirrors and named thin elements, with a label, for
+        annotating plots. Filled by :meth:`_Resonator.round_trip_profile`.
     """
 
     z: np.ndarray
     w: np.ndarray
     element_starts: list[float]
+    landmarks: list[tuple[float, str]] = field(default_factory=list)
 
 
 class _Resonator:
@@ -371,23 +375,44 @@ class _Resonator:
         """Mode radius at the input of the element called ``name`` [m]."""
         return self.spot_size(self.element_index(name), plane)
 
-    def mode_profile(self, plane: Plane = "t", points_per_element: int = 50) -> ModeProfile:
-        """Sample the mode radius along one forward pass of the element list."""
+    def _sample(self, elements: Sequence[Element], plane: Plane,
+                points_per_element: int) -> ModeProfile:
+        """Sample the mode radius through ``elements``, starting at the reference plane."""
         q = self.eigen_q(plane)
-        zs, ws, starts = [], [], []
+        zs, ws, starts, marks = [], [], [], []
         z0 = 0.0
-        for el in self.elements:
+        for el in elements:
             starts.append(z0)
             if el.length > 0:
                 for frac in np.linspace(0, 1, points_per_element):
                     qq = propagate_q(q, el.partial_matrix(frac, plane))
                     zs.append(z0 + frac * el.length)
                     ws.append(gaussian.spot_size(qq, self.wavelength))
+            elif isinstance(el, CurvedMirror) or el.name:
+                marks.append((z0, el.name or "mirror"))
             q = propagate_q(q, el.matrix(plane))
             z0 += el.length
         if not zs:
             zs, ws = [0.0], [gaussian.spot_size(q, self.wavelength)]
-        return ModeProfile(np.array(zs), np.array(ws), starts)
+        return ModeProfile(np.array(zs), np.array(ws), starts, marks)
+
+    def mode_profile(self, plane: Plane = "t", points_per_element: int = 50) -> ModeProfile:
+        """Sample the mode radius along one forward pass of the element list."""
+        return self._sample(self.elements, plane, points_per_element)
+
+    def round_trip_profile(self, plane: Plane = "t",
+                           points_per_element: int = 50) -> ModeProfile:
+        """Sample the mode radius over one full round trip.
+
+        For a :class:`StandingWaveCavity` the beam starts on end mirror 1,
+        travels to end mirror 2 and comes back to mirror 1, so ``z`` runs from
+        0 to twice the physical length and the curve is symmetric about
+        mirror 2. For a :class:`RingCavity` it is one trip around the loop,
+        the same as :meth:`mode_profile`. ``landmarks`` marks the mirrors
+        (end mirrors as ``"M1"``/``"M2"``) and any named thin element, e.g.
+        the crystal's thermal lens; the last point equals the first.
+        """
+        return self._sample(self._round_trip_elements(), plane, points_per_element)
 
     @property
     def physical_length(self) -> float:
@@ -450,7 +475,16 @@ class StandingWaveCavity(_Resonator):
 
     def _round_trip_elements(self) -> list[Element]:
         back = [el.reversed() for el in reversed(self.elements)]
-        return [*self.elements, CurvedMirror(self.R2), *back, CurvedMirror(self.R1)]
+        return [*self.elements, CurvedMirror(self.R2, name="M2"), *back,
+                CurvedMirror(self.R1, name="M1")]
+
+    def round_trip_profile(self, plane: Plane = "t",
+                           points_per_element: int = 50) -> ModeProfile:
+        prof = super().round_trip_profile(plane, points_per_element)
+        prof.landmarks.insert(0, (0.0, "M1"))
+        return prof
+
+    round_trip_profile.__doc__ = _Resonator.round_trip_profile.__doc__
 
     def spot_size_on_mirror(self, which: int = 1, plane: Plane = "t") -> float:
         """Mode radius on end mirror 1 or 2 [m]."""
