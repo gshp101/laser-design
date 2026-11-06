@@ -237,3 +237,9 @@ main { flex: 1; min-width: 0; padding: 16px 20px 24px; }
   main { padding: 12px 16px 20px; }
   .form { grid-template-columns: minmax(0, 1fr) minmax(110px, 160px); }
 }
+
+/* Results: plot a result against one of its inputs */
+.sweep .hint { margin-top: 8px; }
+.sweep-buttons { display: flex; gap: 8px; margin-top: 10px; }
+.sweep-plot { border-color: var(--accent); }
+.sweep-plot .note { margin: 6px 0 0; }

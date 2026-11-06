@@ -16,7 +16,7 @@ from ..gui.presets import PRESETS
 from ..gui.spec import ELEMENT_TYPES, OPERATION_MODES, DesignSpec
 from ..materials import MATERIALS
 from ..passive_qswitch import ABSORBERS
-from .report import MATERIAL_FIELDS, STEPS, finite_or_none, report
+from .report import MATERIAL_FIELDS, STEPS, finite_or_none, report, sweep_plot
 
 
 def _dumps(obj) -> str:
@@ -62,3 +62,20 @@ def run(spec_json: str, step: str) -> str:
         return _dumps({"info": [], "rows": [], "plots": [], "notes": [], "problems": [],
                        "error": f"{type(exc).__name__}: {exc}",
                        "traceback": traceback.format_exc()})
+
+
+def sweep(spec_json: str, request_json: str) -> str:
+    """Plot a Results row against one of its inputs.
+
+    ``request_json`` is ``{"label", "key", "lo", "hi", "points", "log"}``
+    (range in the input's display units; all but ``label`` and ``key``
+    optional). Returns a plot (see :mod:`laserdesign.web.report`) or
+    ``{"error": text}``.
+    """
+    try:
+        spec = DesignSpec.from_dict(json.loads(spec_json))
+        r = json.loads(request_json)
+        return _dumps(sweep_plot(spec, r["label"], r["key"], r.get("lo"), r.get("hi"),
+                                 int(r.get("points") or 25), r.get("log")))
+    except Exception as exc:
+        return _dumps({"error": f"{type(exc).__name__}: {exc}"})

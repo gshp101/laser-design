@@ -19,10 +19,12 @@ import math
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QComboBox,
-                               QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-                               QPushButton, QRadioButton, QSplitter, QStackedWidget,
-                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+                               QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
+                               QLabel, QPushButton, QRadioButton, QSpinBox, QSplitter,
+                               QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget,
+                               QVBoxLayout, QWidget)
 
 from .. import gain, modelocking, pump, thermal
 from ..abcd import StandingWaveCavity
@@ -31,12 +33,23 @@ from ..materials import MATERIALS, get_material
 from ..passive_qswitch import ABSORBERS
 from . import icons
 from .influences import tooltip_html
+from .sweep import sweep, sweep_inputs
 from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
                    library_location, round_trip_mode, trial_beam_summary)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
 HEADER_ICON = 36  # px, icon beside each page title
+
+
+def _gaps_note(d: dict) -> str:
+    """One line on the points of a sweep that have no result."""
+    text = (f"{d['unstable']} of {len(d['x'])} points have no result (unstable resonator or "
+            "invalid design).")
+    if d.get("refined"):
+        lo, hi = d["refined"]
+        text += f"\nExtra points between {_fmt(lo, 4)} and {_fmt(hi, 4)}."
+    return text
 
 
 def _fmt(x: float, digits: int = 3) -> str:
@@ -917,8 +930,9 @@ class OperationPage(Page):
 class ResultsPage(Page):
     title = "5. Results"
     icon_name = "step-results"
-    help_text = ("Performance of the design. Rest the pointer on a row to see what sets it. "
-                 "Go back to any step to change it; results update.")
+    help_text = ("Performance of the design. Rest the pointer on a row to see what sets it, "
+                 "and use “Plot a result against an input” to see how a result changes as one "
+                 "of those inputs is swept. Go back to any step to change it; results update.")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -934,17 +948,176 @@ class ResultsPage(Page):
         left.addWidget(self.table, 1)
         self.notes = info_label()
         left.addWidget(self.notes)
+        left.addWidget(self._sweep_box())
         wrap = QWidget()
         wrap.setLayout(left)
         self.plot = PlotCanvas(2, 1, 5.5, 6)
+        self.sweep_plot = PlotCanvas(1, 1, 5.5, 6)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.plot, "Design plots")
+        self.tabs.addTab(self.sweep_plot, "Result vs input")
         split = QSplitter()
         split.addWidget(wrap)
-        split.addWidget(self.plot)
+        split.addWidget(self.tabs)
         split.setStretchFactor(1, 1)
         lay.addWidget(split)
         split.setSizes([520, 680])
         self.rows: list[tuple[str, str]] = []
         self._twins: list = []
+        self._spec: DesignSpec | None = None
+        self._inputs: dict[str, list] = {}  # row label -> SweepInput list
+        self._swept = False  # a sweep is on show; redo it when the design changes
+        self.table.cellClicked.connect(self._row_clicked)
+        self.sweep_plot.message("Choose a result and an input on the left, then press Plot.")
+
+    # ------------------------------------------------------------------ #
+    # Plot a result against one of its inputs
+    # ------------------------------------------------------------------ #
+    def _sweep_box(self) -> QGroupBox:
+        box = QGroupBox("Plot a result against an input")
+        form = QFormLayout(box)
+        self.sweep_quantity = QComboBox()
+        self.sweep_input = QComboBox()
+        self.sweep_from = QDoubleSpinBox()
+        self.sweep_to = QDoubleSpinBox()
+        for spin in (self.sweep_from, self.sweep_to):
+            spin.setDecimals(4)
+            spin.setRange(-1e12, 1e12)
+            spin.setKeyboardTracking(False)
+            spin.setAlignment(Qt.AlignRight)
+        self.sweep_points = QSpinBox()
+        self.sweep_points.setRange(3, 200)
+        self.sweep_points.setValue(25)
+        self.sweep_log = QCheckBox("log x")
+        pts = QHBoxLayout()
+        pts.addWidget(self.sweep_points, 1)
+        pts.addWidget(self.sweep_log)
+        self.sweep_now = QLabel()
+        self.sweep_now.setWordWrap(True)
+        self.sweep_button = QPushButton("Plot")
+        self.sweep_button.setDefault(True)
+        form.addRow("Result", self.sweep_quantity)
+        form.addRow("Against", self.sweep_input)
+        form.addRow("From", self.sweep_from)
+        form.addRow("To", self.sweep_to)
+        form.addRow("Points", pts)
+        form.addRow(self.sweep_now)
+        form.addRow(self.sweep_button)
+        self.sweep_quantity.currentIndexChanged.connect(self._quantity_changed)
+        self.sweep_input.currentIndexChanged.connect(self._input_changed)
+        self.sweep_button.clicked.connect(self.run_sweep)
+        return box
+
+    def _row_clicked(self, row: int, _col: int) -> None:
+        label = self.rows[row][0] if row < len(self.rows) else None
+        idx = self.sweep_quantity.findText(label) if label else -1
+        if idx >= 0:
+            self.sweep_quantity.setCurrentIndex(idx)
+
+    def _current_input(self):
+        label = self.sweep_quantity.currentText()
+        key = self.sweep_input.currentData()
+        for inp in self._inputs.get(label, []):
+            if inp.key == key:
+                return inp
+        return None
+
+    def _update_sweep_choices(self, spec: DesignSpec) -> None:
+        """Refill the result list for this design, keeping the choice where possible."""
+        self._inputs = {}
+        for label, _ in self.rows:
+            inputs = sweep_inputs(label, spec)
+            if inputs:
+                self._inputs[label] = inputs
+        old = self.sweep_quantity.currentText()
+        self.sweep_quantity.blockSignals(True)
+        self.sweep_quantity.clear()
+        self.sweep_quantity.addItems(list(self._inputs))
+        idx = self.sweep_quantity.findText(old)
+        self.sweep_quantity.setCurrentIndex(max(idx, 0))
+        self.sweep_quantity.blockSignals(False)
+        self._quantity_changed(keep_range=idx >= 0)
+        has = bool(self._inputs)
+        for w in (self.sweep_quantity, self.sweep_input, self.sweep_from, self.sweep_to,
+                  self.sweep_points, self.sweep_log, self.sweep_button):
+            w.setEnabled(has)
+        if not has:
+            self.sweep_now.setText("No result of this design can be plotted.")
+
+    def _quantity_changed(self, *_args, keep_range: bool = False) -> None:
+        old = self.sweep_input.currentData()
+        inputs = self._inputs.get(self.sweep_quantity.currentText(), [])
+        self.sweep_input.blockSignals(True)
+        self.sweep_input.clear()
+        for inp in inputs:
+            self.sweep_input.addItem(f"{inp.step[3:]}: {inp.label}", inp.key)
+        keys = [inp.key for inp in inputs]
+        pick = old if old in keys else ("pump_power" if "pump_power" in keys else None)
+        self.sweep_input.setCurrentIndex(keys.index(pick) if pick else 0)
+        self.sweep_input.blockSignals(False)
+        self._input_changed(keep_range=keep_range and old in keys)
+
+    def _input_changed(self, *_args, keep_range: bool = False) -> None:
+        inp = self._current_input()
+        if inp is None or self._spec is None:
+            return
+        value = inp.get(self._spec) / inp.scale
+        lo, hi = sorted((self.sweep_from.value(), self.sweep_to.value()))
+        if not keep_range or not lo <= value <= hi:
+            self.sweep_from.setValue(inp.lo / inp.scale)
+            self.sweep_to.setValue(inp.hi / inp.scale)
+            self.sweep_log.setChecked(inp.log)
+        for spin in (self.sweep_from, self.sweep_to):
+            spin.setSuffix(f" {inp.unit}" if inp.unit else "")
+        unit = f" {inp.unit}" if inp.unit else ""
+        self.sweep_now.setText(f"<i>Now {_fmt(value, 4)}{unit}. Every other input stays as "
+                               "designed.</i>")
+
+    def run_sweep(self, _checked: bool = False, show: bool = True) -> None:
+        """Sweep the chosen input and plot the chosen result."""
+        inp = self._current_input()
+        if inp is None or self._spec is None:
+            return
+        label = self.sweep_quantity.currentText()
+        QGuiApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            d = sweep(label, inp.key, self._spec, self.sweep_from.value(),
+                      self.sweep_to.value(), self.sweep_points.value(),
+                      self.sweep_log.isChecked())
+        except ValueError as exc:
+            self.sweep_plot.message(str(exc))
+            return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+        self._swept = True
+        self.draw_sweep(d)
+        if show:
+            self.tabs.setCurrentWidget(self.sweep_plot)
+
+    def draw_sweep(self, d: dict) -> None:
+        self.sweep_plot.clear()
+        ax = self.sweep_plot.axes[0]
+        ax.set_axis_on()
+        many = len(d["series"]) > 1
+        for i, (s, style) in enumerate(zip(d["series"], ("-", "--", ":"))):
+            ax.plot(d["x"], s["y"], style, color=f"C{i}", label=s["label"] if many else None)
+            y0 = d["current_y"][i]
+            if np.isfinite(y0):
+                ax.plot([d["current"]], [y0], "o", mfc="none", color=f"C{i}")
+        ax.axvline(d["current"], c="k", ls=":", lw=0.8)
+        ax.set(xlabel=d["xlabel"], ylabel=d["ylabel"], title=d["title"])
+        if d["xlog"]:
+            ax.set_xscale("log")
+        ax.set_xlim(d["lo"], d["hi"])
+        if many:
+            ax.legend(fontsize=8)
+        if d["unstable"] == len(d["x"]):
+            ax.text(0.5, 0.5, "No result anywhere in this range\n(unstable resonator or "
+                    "invalid design)", ha="center", va="center", transform=ax.transAxes,
+                    color="0.3")
+        elif d["unstable"]:
+            ax.text(0.01, 0.01, _gaps_note(d), transform=ax.transAxes, fontsize=8, color="0.3")
+        self.sweep_plot.draw_idle()
 
     def load(self, spec: DesignSpec) -> None:
         pass
@@ -970,12 +1143,16 @@ class ResultsPage(Page):
             laser = build_laser(spec)
         except ValueError as exc:
             self._set_rows([("Error", str(exc))])
+            self._spec = spec
+            self._update_sweep_choices(spec)
             self.plot.message(str(exc))
             return
         p = spec.pump_power
         op = laser.analyze(p)
         if not op.stable:
             self._set_rows([("Resonator", "unstable at this pump power")])
+            self._spec = spec
+            self._update_sweep_choices(spec)
             self.plot.message("The resonator is unstable at the chosen pump power.\n"
                               "Go back to step 3 to change it.")
             self.notes.setText("")
@@ -1094,6 +1271,10 @@ class ResultsPage(Page):
         self.notes.setText(notes + "<br><i>Results come from idealised models; see the theory "
                            "pages for their assumptions.</i>")
         self.plot.draw_idle()
+        self._spec = spec
+        self._update_sweep_choices(spec)
+        if self._swept and self._current_input() is not None:
+            self.run_sweep(show=False)
 
     # ------------------------------------------------------------------ #
     def _passive(self, spec, laser, rows, stable_ops, a1, a2) -> str:

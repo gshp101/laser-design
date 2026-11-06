@@ -184,3 +184,31 @@ def test_passive_mode_from_operation_page(window, app):
     assert window.spec.absorber_location == "mirror2"
     rows = walk(window, app)
     assert "Repetition rate" in rows
+
+
+def test_results_plot_against_an_input(window, app):
+    window.load_spec(presets.PRESETS["Q-switched Nd:YAG (20 W pump)"]())
+    walk(window, app)
+    page = window.pages[-1]
+    labels = [page.sweep_quantity.itemText(i) for i in range(page.sweep_quantity.count())]
+    assert "Pulse energy" in labels and "Design" not in labels
+    # Clicking a row picks it.
+    page._row_clicked([k for k, _ in page.rows].index("Pulse energy"), 0)
+    assert page.sweep_quantity.currentText() == "Pulse energy"
+    keys = [page.sweep_input.itemData(i) for i in range(page.sweep_input.count())]
+    assert "rep_rate" in keys and "pump_power" in keys
+    assert page.sweep_input.currentData() == "pump_power"
+    page.sweep_input.setCurrentIndex(keys.index("rep_rate"))
+    assert page.sweep_log.isChecked()
+    page.sweep_points.setValue(6)
+    page.run_sweep()
+    ax = page.sweep_plot.axes[0]
+    assert page.tabs.currentWidget() is page.sweep_plot
+    assert ax.get_xscale() == "log"
+    assert ax.get_xlabel() == "Repetition rate [kHz]"
+    assert len(ax.lines[0].get_xdata()) == 6
+    # The sweep follows the design.
+    window.spec.pump_power *= 0.5
+    window.refresh()
+    assert page.sweep_quantity.currentText() == "Pulse energy"
+    assert page.sweep_input.currentData() == "rep_rate"

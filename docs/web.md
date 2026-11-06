@@ -30,7 +30,10 @@ also the tutorial for the browser version. The differences:
   radius of `inf` means flat.
 - Plots show the values under the pointer.
 - On the Results step, hovering over a row (or tapping it, or focusing it
-  with the keyboard) shows the inputs that set that quantity.
+  with the keyboard) shows the inputs that set that quantity, and the
+  **Plot a result against an input** box below the table sweeps one of
+  those inputs and plots the result above the step's own plots (see
+  {ref}`the desktop guide <gui-sweep>`; it works the same way).
 - The Results step's KLM case takes a few seconds, since it re-solves the
   Kerr-lensed resonator at several pump powers.
 
@@ -81,9 +84,10 @@ index.html, app.js      forms, plots, file handling (JavaScript, main thread)
         │  JSON
 worker.js               Web Worker: loads Pyodide, NumPy, SciPy, laserdesign.zip
         │
-laserdesign.web.api     catalog(), normalise(spec), run(spec, step)
+laserdesign.web.api     catalog(), normalise(spec), run(spec, step), sweep(spec, request)
 laserdesign.web.report  one report per step: summary lines, result rows, plot data
 laserdesign.gui.influences  which inputs set each result row (the hover notes)
+laserdesign.gui.sweep   a result row against one of those inputs (the sweep plot)
 laserdesign.gui.spec    DesignSpec -> EndPumpedLaser / SidePumpedRodLaser
 ```
 

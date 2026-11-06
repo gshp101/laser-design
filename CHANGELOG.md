@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Results step, desktop and browser: plot any numeric result against one
+  of the inputs that set it (the inputs in its hover note). Pick the
+  result and the input, edit the range if you like, and the input is swept
+  with everything else as designed; the current design is marked and
+  unstable points leave gaps. Air gaps, fold mirrors and lenses can be
+  swept one by one, and material constants as overrides. New Qt-free
+  module `laserdesign.gui.sweep`; the browser report gains a `sweeps` list
+  alongside `rows`, and `laserdesign.web.api.sweep()` draws one.
 - Resonator round-trip plot now also works for unstable resonators: it
   follows a trial beam (pumped radius, wavefront matched to mirror 1) for
   one round trip, so you can see where the beam runs away. Every cavity

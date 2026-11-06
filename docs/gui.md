@@ -143,6 +143,42 @@ not every one that enters the calculation. The notes are defined in
 {mod}`laserdesign.gui.influences`, which both the desktop and the browser
 versions use.
 
+(gui-sweep)=
+### Plotting a result against an input
+
+The **Plot a result against an input** box under the table turns any of
+those notes into a plot. Pick a result (or click its row in the table),
+pick one of the inputs that set it, set the range and press **Plot**. The
+input is swept over the range with every other input kept as designed, and
+the result is drawn on the **Result vs input** tab, with your design marked.
+Results that are two numbers (the laser and pump radii, the KLM strength in
+the two planes) or a sum of parts (the M² estimate) are drawn as several
+curves.
+
+The inputs offered are the ones in the hover note that are continuous
+numbers: powers, sizes, losses, the absorber and SESAM settings, the
+material constants (swept as overrides of the material) and, for "Resonator
+elements and spacings", each air gap, fold-mirror radius and lens focal
+length separately. Choices such as the material or where the SESAM sits are
+not offered. The range starts at a sensible span around the current value
+(a decade either side for the Q-switch repetition rate, which is drawn on a
+log axis), and you can edit it. Points where the resonator is unstable or
+the design is invalid have no result and leave gaps in the curve; the plot
+says how many. Once a sweep is on show it is redone whenever you come back
+to the Results step, so you can change an input elsewhere and compare.
+
+The sweep is done by {mod}`laserdesign.gui.sweep`, which the browser
+version uses too, so scripts can call it directly:
+
+```python
+from laserdesign.gui.presets import PRESETS
+from laserdesign.gui.sweep import sweep, sweep_inputs
+
+spec = PRESETS["Q-switched Nd:YAG (20 W pump)"]()
+print([i.key for i in sweep_inputs("Pulse energy", spec)])
+d = sweep("Pulse energy", "rep_rate", spec, lo=1, hi=100)   # kHz, display units
+```
+
 Go back to any step, change something, and return: the results are
 recomputed from the current inputs.
 
