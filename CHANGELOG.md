@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Sixteen more gain media in the materials database, for twenty in all:
+  Nd:GdVO4, Nd:YLF (1047 and 1053 nm), Nd:phosphate glass, Yb:KGW, Yb:KYW,
+  Yb:phosphate glass, Yb:CaF2, Yb:Lu2O3, Cr:LiSAF, Cr:forsterite,
+  alexandrite, Cr:ZnSe, Er:YAG (1645 nm), Tm:YAG and Ho:YAG, each with its
+  sources. They appear in the Qt wizard and the browser version. The Gain
+  medium step shows each material's sources. New page `docs/materials.md`
+  with a summary table and modelling notes, and `tests/test_materials.py`,
+  which runs every material through every wizard step.
 - Results step, desktop and browser: hovering over a row shows how the
   quantity is found and the principal inputs that set it, grouped by wizard
   step with their current values. The dependencies are written once, in the
@@ -35,6 +43,12 @@ All notable changes to this project are documented here. The format follows
   `laserdesign/gui/icons/`, drawn in the palette's text colour so they follow
   light and dark mode. `app-icon.png` (512 × 512) in the repository root is
   rendered from the same SVG by `tools/render_app_icon.py`.
+
+### Fixed
+
+- Qt wizard: dn/dT can be edited to a negative value, and a database value
+  that the spin box has to round (such as a gain bandwidth in GHz) is no
+  longer stored as a user override.
 
 ## [0.2.0] - 2026-11-02
 

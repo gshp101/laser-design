@@ -14,6 +14,7 @@ the spec with :func:`laserdesign.gui.spec.build_laser`.
 
 from __future__ import annotations
 
+import html
 import math
 
 import numpy as np
@@ -134,7 +135,9 @@ class GainMediumPage(Page):
         bl = QFormLayout(box)
         self.props: dict[str, UnitSpin] = {}
         for attr, label, scale, suffix, dec in MATERIAL_FIELDS:
-            spin = UnitSpin(0, scale, suffix, 0, 1e9, dec, 10 ** -dec if dec else 1)
+            # dn/dT is negative for YLF, glasses, KGW/KYW, CaF2 and LiSAF.
+            low = -1e9 if attr == "dn_dT" else 0
+            spin = UnitSpin(0, scale, suffix, low, 1e9, dec, 10 ** -dec if dec else 1)
             spin.valueChanged.connect(self._emit)
             self.props[attr] = spin
             bl.addRow(label, spin)
@@ -186,9 +189,11 @@ class GainMediumPage(Page):
         base = get_material(spec.material)
         overrides = {}
         for attr, spin in self.props.items():
-            v = spin.si()
-            if not math.isclose(v, getattr(base, attr), rel_tol=1e-6):
-                overrides[attr] = v
+            # Compare in display units at the spin box's precision, so a
+            # database value the box has to round is not taken as an edit.
+            shown = round(getattr(base, attr) / spin.scale, spin.decimals())
+            if not math.isclose(spin.value(), shown, rel_tol=1e-9, abs_tol=1e-12):
+                overrides[attr] = spin.si()
         spec.material_overrides = overrides
 
     def refresh(self, spec: DesignSpec) -> None:
@@ -205,7 +210,8 @@ class GainMediumPage(Page):
             f"intensity {mat.saturation_intensity / 1e7:.3g} kW/cm²<br>"
             f"Heat fraction {mat.effective_heat_fraction:.2f}; σ·τ = "
             f"{mat.emission_cross_section * mat.upper_state_lifetime * 1e4 * 1e23:.3g}×10⁻²³ cm²·s "
-            "(higher means lower threshold)")
+            "(higher means lower threshold)"
+            + (f"<br><i>Sources: {html.escape(mat.notes)}</i>" if mat.notes else ""))
 
 
 # ====================================================================== #

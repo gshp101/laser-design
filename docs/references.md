@@ -66,4 +66,5 @@ checks based on Koechner's tables and formulas. Values marked "from memory" in
 the tests were reproduced without the book at hand and should be verified
 against it. The same applies to the bibliographic details of the papers added
 for passive Q-switching, Kerr-lens mode locking, side pumping and ring lasers
-in version 0.2.0, which were also entered from memory.
+in version 0.2.0, which were also entered from memory, and to the material
+values and their citations added after 0.2.0 (see {doc}`materials`).

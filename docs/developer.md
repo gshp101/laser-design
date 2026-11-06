@@ -70,8 +70,12 @@ On a headless Linux machine the GUI tests need the Qt runtime libraries
    checks at least the derived pump absorption coefficient against a
    published value.
 
-The GUI's material list is built from `MATERIALS`, so the new material
-appears there automatically.
+4. Add a typical doping for it to `TYPICAL_DOPING` in
+   `tests/test_materials.py`, which runs every material through every wizard
+   step, and list its sources in `docs/materials.md`.
+
+The Qt and browser material lists are built from `MATERIALS`, so the new
+material appears in both automatically.
 
 ## Adding a model
 

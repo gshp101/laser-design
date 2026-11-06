@@ -60,6 +60,7 @@ theory/ring_resonators
 :caption: Reference
 
 api/index
+materials
 validation
 developer
 references
