@@ -77,9 +77,13 @@ For the Q-switched laser:
 2. After the crystal, add a 10 mm air gap, a medium of 25 mm and n = 1.45
    named "AO Q-switch", and a 40 mm air gap.
 
-The upper plot shows the TEM00 mode along the cavity at full pump power in
-both planes (they differ only with off-axis curved mirrors or Brewster
-plates). The lower plot shows the stability parameter as the pump power, and
+The upper plot shows the TEM00 beam radius over one full round trip at full
+pump power, in both planes (they differ only with off-axis curved mirrors or
+Brewster plates). For a standing-wave resonator the trace starts on end
+mirror 1, runs to end mirror 2 and comes back to mirror 1, so it is
+symmetric about M2; for a ring it goes once around the loop. Dotted lines
+mark the mirrors (M1, M2 and fold mirrors by name), the crystal and any other
+named thin element. The lower plot shows the stability parameter as the pump power, and
 so the thermal lens, changes. The shaded band is the stable zone, and the
 dotted line marks your operating point. The summary gives the mode-to-pump
 size ratio in the crystal (aim for about 0.8 to 1 for TEM00 with good

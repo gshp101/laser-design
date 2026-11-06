@@ -309,3 +309,36 @@ def build_laser(spec: DesignSpec) -> EndPumpedLaser | SidePumpedRodLaser:
                           output_coupling=spec.output_coupling,
                           passive_loss=spec.passive_loss, pump_passes=spec.pump_passes,
                           effective_absorption=spec.effective_absorption)
+
+
+def round_trip_mode(cavity) -> dict:
+    """What the resonator step plots: the TEM00 radius over one round trip.
+
+    Shared by the Qt wizard and the browser version. A standing-wave cavity
+    is traced from end mirror 1 to end mirror 2 and back to mirror 1; a ring
+    once around the loop (see :meth:`laserdesign.abcd._Resonator.round_trip_profile`).
+
+    Returns
+    -------
+    dict
+        ``"t"`` and ``"s"``: :class:`laserdesign.abcd.ModeProfile` for each
+        plane; ``"landmarks"``: ``[(z, label), ...]`` with the crystal shown as
+        ``"crystal"`` and labels closer than 3 % of the path merged; ``"xlabel"`` and ``"title"`` for the axis and plot.
+    """
+    profiles = {plane: cavity.round_trip_profile(plane) for plane in ("t", "s")}
+    # Landmarks closer than 3 % of the path share one label (e.g. M1 and a
+    # crystal bonded to it), so the text does not overprint.
+    span = float(profiles["t"].z[-1]) or 1.0
+    landmarks: list[tuple[float, str]] = []
+    for z, name in profiles["t"].landmarks:
+        name = "crystal" if name == CRYSTAL_LENS_NAME else name
+        if landmarks and z - landmarks[-1][0] < 0.03 * span:
+            landmarks[-1] = (landmarks[-1][0], f"{landmarks[-1][1]}, {name}")
+        else:
+            landmarks.append((z, name))
+    standing = isinstance(cavity, abcd.StandingWaveCavity)
+    return {**profiles, "landmarks": landmarks,
+            "xlabel": ("path from mirror 1 to mirror 2 and back [mm]" if standing
+                       else "position around the ring [mm]"),
+            "title": "TEM00 mode over one round trip" if standing
+            else "TEM00 mode around the ring"}

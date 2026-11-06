@@ -203,6 +203,7 @@ main { flex: 1; min-width: 0; padding: 16px 20px 24px; }
 .plot .axis text.label { fill: var(--text); font-size: 12px; }
 .plot .line { fill: none; stroke-width: 1.8; }
 .plot .ref { stroke: var(--muted); stroke-width: 1; }
+.plot .ref-label { fill: var(--muted); font-size: 10px; }
 .plot .band { fill: var(--band); }
 .plot .cross { stroke: var(--muted); stroke-width: 0.8; }
 .plot .c0 { stroke: var(--c0); fill: var(--c0); } .plot .line.c0 { fill: none; }

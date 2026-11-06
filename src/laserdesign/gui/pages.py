@@ -31,7 +31,7 @@ from ..passive_qswitch import ABSORBERS
 from . import icons
 from .influences import tooltip_html
 from .spec import (CRYSTAL_LENS_NAME, DesignSpec, absorber, build_laser, kerr_model,
-                   library_location)
+                   library_location, round_trip_mode)
 from .widgets import PlotCanvas, RadiusInput, UnitSpin, info_label
 
 UM, MM, CM = 1e-6, 1e-3, 1e-2
@@ -416,7 +416,8 @@ class ResonatorPage(Page):
                  "mirror 1 (usually the pumped face) to end mirror 2. For a unidirectional "
                  "ring, list one full loop, with the curved mirrors as fold mirrors. Name "
                  "elements you want to refer to later (absorber, SESAM, aperture). The plots "
-                 "show the TEM00 mode at full pump power and how the stability parameter "
+                 "show the TEM00 radius over one round trip at full pump power and how the "
+                 "stability parameter "
                  "m = (A+D)/2 moves as the thermal lens changes; the resonator is stable "
                  "for −1 < m < 1.")
 
@@ -638,15 +639,20 @@ class ResonatorPage(Page):
         self.plot.clear()
         a1, a2 = self.plot.axes
         if cav.is_stable():
+            trip = round_trip_mode(cav)
             for plane, ls in (("t", "-"), ("s", "--")):
-                prof = cav.mode_profile(plane)
+                prof = trip[plane]
                 a1.plot(prof.z / MM, prof.w / UM, ls,
                         label="tangential" if plane == "t" else "sagittal")
+            a1.set_ylim(bottom=0)
+            for z, label in trip["landmarks"]:
+                a1.axvline(z / MM, c="0.6", lw=0.7, ls=":")
+                a1.text(z / MM, 0.98, label, rotation=90, ha="right", va="top", fontsize=7,
+                        color="0.35", transform=a1.get_xaxis_transform())
             standing = isinstance(cav, StandingWaveCavity)
-            a1.set(xlabel="distance from mirror 1 [mm]" if standing
-                   else "position around the ring [mm]", ylabel="w [µm]",
-                   title=f"TEM00 mode at {spec.pump_power:.3g} W pump")
-            a1.legend(fontsize=8)
+            a1.set(xlabel=trip["xlabel"], ylabel="w [µm]",
+                   title=f"{trip['title']} at {spec.pump_power:.3g} W pump")
+            a1.legend(fontsize=8, loc="lower right")
             w_l = cav.spot_size_at(CRYSTAL_LENS_NAME)
             pump_kind = "rod" if isinstance(laser, SidePumpedRodLaser) else "pump"
             text = (f"<b>Stable</b> at {spec.pump_power:.3g} W: m = "

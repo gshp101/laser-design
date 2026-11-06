@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows
   new Qt-free module `laserdesign.gui.influences`, and follow the design (end
   or side pumping, standing-wave or ring resonator, operating mode). The
   browser report gains a `tips` list alongside `rows`.
+- Beam radius over one round trip on the resonator step of the Qt wizard and
+  the web version: a standing-wave resonator is traced from end mirror 1 to
+  end mirror 2 and back to mirror 1, a ring once around the loop, with the
+  mirrors and crystal marked. New `round_trip_profile()` on
+  `StandingWaveCavity` and `RingCavity` (with `ModeProfile.landmarks`) and the
+  shared `laserdesign.gui.spec.round_trip_mode()` that both front ends plot.
 - Browser version of the design wizard (`web/`), with the app icon on its loading screen: the five steps of the Qt
   GUI as a static web page that runs `laserdesign`, NumPy and SciPy in the
   browser with Pyodide, in a Web Worker. Examples, open/save of the same JSON

@@ -1,6 +1,6 @@
 // Small SVG line-plot renderer for the reports made by laserdesign.web.report.
 // No dependencies: linear and log axes, an optional second y axis, reference
-// lines, a shaded band, markers, a legend and a hover read-out.
+// lines (optionally labelled), a shaded band, markers, a legend and a hover read-out.
 
 const SVG = "http://www.w3.org/2000/svg";
 const DASH = { solid: "", dash: "6 4", dot: "1.5 3" };
@@ -109,7 +109,11 @@ export function drawPlot(host, p) {
   const xs_ = p.xlog ? logScale(...xr) : linearScale(...xr, Math.max(3, Math.round(W / 80)));
   const ys_ = p.ylog ? logScale(...yr) : linearScale(...yr, Math.max(3, Math.round(H / 45)));
   const y2s_ = y2r ? linearScale(...y2r, Math.max(3, Math.round(H / 45))) : null;
-  if (!p.xlog && !p.vlines.length) { xs_.lo = xr[0]; xs_.hi = xr[1]; }
+  // Snap the x axis to the data unless a reference line lies outside it.
+  const dataX = extent(p.series.flatMap((s) => s.x), p.xlog);
+  if (!p.xlog && dataX && p.vlines.every((v) => !finite(v.x) || (v.x >= dataX[0] && v.x <= dataX[1]))) {
+    xs_.lo = xr[0]; xs_.hi = xr[1];
+  }
 
   const tx = (v) => m.l + ((xs_.log ? Math.log10(v) : v) - xs_.lo) / (xs_.hi - xs_.lo) * W;
   const tyFor = (s) => (v) => m.t + H - ((s.log ? Math.log10(v) : v) - s.lo) / (s.hi - s.lo) * H;
@@ -158,6 +162,11 @@ export function drawPlot(host, p) {
   for (const v of p.vlines) {
     if (!finite(v.x)) continue;
     el("line", { x1: tx(v.x), x2: tx(v.x), y1: m.t, y2: m.t + H, class: "ref", "stroke-dasharray": DASH.dot }, body);
+    if (v.label) {
+      const X = tx(v.x) - 3, Y = m.t + 4;
+      el("text", { x: X, y: Y, "text-anchor": "end", class: "ref-label",
+        transform: `rotate(-90 ${X} ${Y})` }, body).textContent = v.label;
+    }
   }
   for (const h of p.hlines) {
     if (!finite(h.y)) continue;
